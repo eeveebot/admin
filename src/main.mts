@@ -57,7 +57,7 @@ await nats.connect();
 let adminConfig: AdminRootConfig;
 try {
   adminConfig = await loadAdminConfig();
-  log.info('Admin module initialized successfully', { 
+  log.info('Admin module initialized successfully', {
     producer: 'admin',
     adminCount: adminConfig.admins.length
   });
@@ -187,20 +187,30 @@ const joinCommandSub = nats.subscribe(
         return;
       }
 
-      // Extract channel from command text (format: "join #channel")
-      const channelMatch = data.originalText.match(/join\s+(.+)$/i);
-      if (!channelMatch) {
+      // Extract channel and optional key from command text (format: "#channel [key]")
+      const parts = data.text.trim().split(/\s+/);
+      if (parts.length === 0 || !parts[0]) {
         log.warn('Invalid join command format', {
           producer: 'admin',
-          originalText: data.originalText,
+          text: data.text,
         });
         return;
       }
 
-      const channel = channelMatch[1].trim();
-      
+      const channel = parts[0];
+      const key = parts.length > 1 ? parts[1] : undefined;
+
       // Publish control message to NATS
-      const controlMessage = {
+      const controlMessage: {
+        action: string;
+        data: {
+          channel: string;
+          key?: string;
+        };
+        platform: string;
+        instance: string;
+        trace: string;
+      } = {
         action: 'join',
         data: {
           channel: channel,
@@ -210,9 +220,15 @@ const joinCommandSub = nats.subscribe(
         trace: data.trace,
       };
 
-      const controlTopic = `control.chatConnectors.${data.platform}.${data.instance}.join`;
+      // Add key to data if provided
+      if (key) {
+        controlMessage.data.key = key;
+      }
+
+      // Publish control message to NATS
+      const controlTopic = `control.chatConnectors.${data.platform}.${data.instance}`;
       void nats.publish(controlTopic, JSON.stringify(controlMessage));
-      
+
       log.info(`Published join control message for ${channel}`, {
         producer: 'admin',
         topic: controlTopic,
@@ -255,18 +271,16 @@ const partCommandSub = nats.subscribe(
         return;
       }
 
-      // Extract channel from command text (format: "part #channel")
-      const channelMatch = data.originalText.match(/part\s+(.+)$/i);
-      if (!channelMatch) {
+      // Extract channel from command text (format: "#channel")
+      const channel = data.text.trim();
+      if (!channel) {
         log.warn('Invalid part command format', {
           producer: 'admin',
-          originalText: data.originalText,
+          text: data.text,
         });
         return;
       }
 
-      const channel = channelMatch[1].trim();
-      
       // Publish control message to NATS
       const controlMessage = {
         action: 'part',
@@ -278,9 +292,9 @@ const partCommandSub = nats.subscribe(
         trace: data.trace,
       };
 
-      const controlTopic = `control.chatConnectors.${data.platform}.${data.instance}.part`;
+      const controlTopic = `control.chatConnectors.${data.platform}.${data.instance}`;
       void nats.publish(controlTopic, JSON.stringify(controlMessage));
-      
+
       log.info(`Published part control message for ${channel}`, {
         producer: 'admin',
         topic: controlTopic,
