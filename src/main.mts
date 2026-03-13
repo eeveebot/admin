@@ -8,7 +8,13 @@ import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
 
 const natsClients: InstanceType<typeof NatsClient>[] = [];
-// const natsSubscriptions: Array<Promise<string | boolean>> = [];
+const natsSubscriptions: Array<Promise<string | boolean>> = [];
+
+const adminJoinCommandUUID: string = '20a6f27e-bd12-4c5c-931e-cb4a232b2ce5';
+const adminPartCommandUUID: string = '8d5c0a13-1336-4882-aa41-00a068b2aa00';
+
+const adminJoinCommandDisplayName: string = 'admin-join';
+const adminPartCommandDisplayName: string = 'admin-part';
 
 //
 // Do whatever teardown is necessary before calling common handler
@@ -62,3 +68,263 @@ try {
   });
   throw error;
 }
+
+// Function to check if a user is an authenticated admin
+function isAuthenticatedAdmin(platform: string, user: string, userHost: string): boolean {
+  // For now, we only support IRC authentication
+  if (platform !== 'irc') {
+    return false;
+  }
+
+  // Create full hostmask in the format nick!user@host
+  const fullHostmask = `${user}!${userHost}`;
+
+  // Check if the user matches any admin's hostmask
+  return adminConfig.admins.some(admin => {
+    // Check if the platform is accepted
+    const platformAccepted = admin.acceptedPlatforms.some(pattern => {
+      const regex = new RegExp(pattern);
+      return regex.test(platform);
+    });
+
+    // Check if the hostmask matches (support both exact match and regex)
+    let hostmaskMatches = false;
+    if (admin.authentication.irc?.hostmask) {
+      try {
+        const hostmaskRegex = new RegExp(admin.authentication.irc.hostmask);
+        hostmaskMatches = hostmaskRegex.test(userHost) || hostmaskRegex.test(fullHostmask);
+      } catch {
+        // If regex fails, fall back to exact match
+        hostmaskMatches = admin.authentication.irc.hostmask === userHost || admin.authentication.irc.hostmask === fullHostmask;
+      }
+    }
+
+    return platformAccepted && hostmaskMatches;
+  });
+}
+
+// Register admin commands
+async function registerAdminCommands(): Promise<void> {
+  const commands = [
+    {
+      type: 'command.register',
+      commandUUID: adminJoinCommandUUID,
+      commandDisplayName: adminJoinCommandDisplayName,
+      platform: '.*',
+      network: '.*',
+      instance: '.*',
+      channel: '.*',
+      user: '.*',
+      regex: 'admin join ',
+      platformPrefixAllowed: true,
+      ratelimit: {
+        mode: 'drop',
+        level: 'user',
+        limit: 3,
+        interval: '1m',
+      },
+    },
+    {
+      type: 'command.register',
+      commandUUID: adminPartCommandUUID,
+      commandDisplayName: adminPartCommandDisplayName,
+      platform: '.*',
+      network: '.*',
+      instance: '.*',
+      channel: '.*',
+      user: '.*',
+      regex: 'admin part ',
+      platformPrefixAllowed: true,
+      ratelimit: {
+        mode: 'drop',
+        level: 'user',
+        limit: 3,
+        interval: '1m',
+      },
+    }
+  ];
+
+  for (const command of commands) {
+    try {
+      await nats.publish('command.register', JSON.stringify(command));
+      log.info(`Registered ${command.commandDisplayName} command with router`, { producer: 'admin' });
+    } catch (error) {
+      log.error(`Failed to register ${command.commandDisplayName} command`, {
+        producer: 'admin',
+        error: error,
+      });
+    }
+  }
+}
+
+// Register commands at startup
+await registerAdminCommands();
+
+// Subscribe to join command execution messages
+const joinCommandSub = nats.subscribe(
+  `command.execute.${adminJoinCommandUUID}`,
+  (subject, message) => {
+    try {
+      const data = JSON.parse(message.string());
+      log.info('Received command.execute for join', {
+        producer: 'admin',
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        originalText: data.originalText,
+      });
+
+      // Check if user is authenticated admin
+      if (!isAuthenticatedAdmin(data.platform, data.user, data.userHost)) {
+        log.warn('Unauthorized join command attempt', {
+          producer: 'admin',
+          platform: data.platform,
+          user: data.user,
+          userHost: data.userHost,
+          channel: data.channel,
+        });
+        return;
+      }
+
+      // Extract channel from command text (format: "join #channel")
+      const channelMatch = data.originalText.match(/join\s+(.+)$/i);
+      if (!channelMatch) {
+        log.warn('Invalid join command format', {
+          producer: 'admin',
+          originalText: data.originalText,
+        });
+        return;
+      }
+
+      const channel = channelMatch[1].trim();
+      
+      // Publish control message to NATS
+      const controlMessage = {
+        action: 'join',
+        data: {
+          channel: channel,
+        },
+        platform: data.platform,
+        instance: data.instance,
+        trace: data.trace,
+      };
+
+      const controlTopic = `control.chatConnectors.${data.platform}.${data.instance}.join`;
+      void nats.publish(controlTopic, JSON.stringify(controlMessage));
+      
+      log.info(`Published join control message for ${channel}`, {
+        producer: 'admin',
+        topic: controlTopic,
+      });
+    } catch (error) {
+      log.error('Failed to process join command', {
+        producer: 'admin',
+        message: message.string(),
+        error: error,
+      });
+    }
+  }
+);
+natsSubscriptions.push(joinCommandSub);
+
+// Subscribe to part command execution messages
+const partCommandSub = nats.subscribe(
+  `command.execute.${adminPartCommandUUID}`,
+  (subject, message) => {
+    try {
+      const data = JSON.parse(message.string());
+      log.info('Received command.execute for part', {
+        producer: 'admin',
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        originalText: data.originalText,
+      });
+
+      // Check if user is authenticated admin
+      if (!isAuthenticatedAdmin(data.platform, data.user, data.userHost)) {
+        log.warn('Unauthorized part command attempt', {
+          producer: 'admin',
+          platform: data.platform,
+          user: data.user,
+          userHost: data.userHost,
+          channel: data.channel,
+        });
+        return;
+      }
+
+      // Extract channel from command text (format: "part #channel")
+      const channelMatch = data.originalText.match(/part\s+(.+)$/i);
+      if (!channelMatch) {
+        log.warn('Invalid part command format', {
+          producer: 'admin',
+          originalText: data.originalText,
+        });
+        return;
+      }
+
+      const channel = channelMatch[1].trim();
+      
+      // Publish control message to NATS
+      const controlMessage = {
+        action: 'part',
+        data: {
+          channel: channel,
+        },
+        platform: data.platform,
+        instance: data.instance,
+        trace: data.trace,
+      };
+
+      const controlTopic = `control.chatConnectors.${data.platform}.${data.instance}.part`;
+      void nats.publish(controlTopic, JSON.stringify(controlMessage));
+      
+      log.info(`Published part control message for ${channel}`, {
+        producer: 'admin',
+        topic: controlTopic,
+      });
+    } catch (error) {
+      log.error('Failed to process part command', {
+        producer: 'admin',
+        message: message.string(),
+        error: error,
+      });
+    }
+  }
+);
+natsSubscriptions.push(partCommandSub);
+
+// Subscribe to control messages for re-registering commands
+const controlSubRegisterCommandAdminJoin = nats.subscribe(
+  `control.registerCommands.${adminJoinCommandDisplayName}`,
+  () => {
+    log.info(`Received control.registerCommands.${adminPartCommandDisplayName} control message`, {
+      producer: 'admin',
+    });
+    void registerAdminCommands();
+  }
+);
+
+// Subscribe to control messages for re-registering commands
+const controlSubRegisterCommandAdminPart = nats.subscribe(
+  `control.registerCommands.${adminPartCommandDisplayName}`,
+  () => {
+    log.info(`Received control.registerCommands.${adminPartCommandDisplayName} control message`, {
+      producer: 'admin',
+    });
+    void registerAdminCommands();
+  }
+);
+
+const controlSubRegisterCommandAll = nats.subscribe(
+  'control.registerCommands',
+  () => {
+    log.info('Received control.registerCommands control message', {
+      producer: 'admin',
+    });
+    void registerAdminCommands();
+  }
+);
+natsSubscriptions.push(controlSubRegisterCommandAdminJoin, controlSubRegisterCommandAdminPart, controlSubRegisterCommandAll);
