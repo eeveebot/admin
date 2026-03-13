@@ -1,0 +1,24 @@
+---
+# Example admin configuration file
+admins:
+  # Admin display name
+  - displayName: "Root Admin"
+    # Unique identifier for this admin
+    uuid: "123e4567-e89b-12d3-a456-426614174000"
+    # Platforms this admin is accepted on (regex patterns)
+    acceptedPlatforms:
+      - "irc"
+      - "discord"
+    # Authentication methods for this admin
+    authentication:
+      # Currently supporting IRC hostmask identification
+      irc:
+        hostmask: "admin@example.com"
+
+  - displayName: "Secondary Admin"
+    uuid: "123e4567-e89b-12d3-a456-426614174001"
+    acceptedPlatforms:
+      - ".*"  # All platforms
+    authentication:
+      irc:
+        hostmask: "secondary@example.com"
