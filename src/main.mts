@@ -434,7 +434,7 @@ const routerResponseSub = nats.subscribe(
         trace: data.trace,
       };
 
-      const responseTopic = `messages.outgoing.${data.requester.platform}.${data.requester.instance}`;
+      const responseTopic = `messages.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
       void nats.publish(responseTopic, JSON.stringify(responseMessage));
 
       log.info('Sent rate limit statistics to user', {
