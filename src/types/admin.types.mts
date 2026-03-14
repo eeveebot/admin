@@ -36,5 +36,6 @@ export interface AdminRootConfig {
     showCommandRegistry?: RateLimitConfig;
     moduleUptime?: RateLimitConfig;
     moduleRestart?: RateLimitConfig;
+    listBotModules?: RateLimitConfig;
   };
 }

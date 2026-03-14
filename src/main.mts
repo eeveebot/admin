@@ -1033,7 +1033,8 @@ const listBotModulesCommandSub = nats.subscribe(
           return;
         }
 
-        const modules = await response.json();
+        const modulesResponse = await response.json();
+        const modules: Array<{name: string; namespace: string; image: string; tag: string; enabled: boolean}> = Array.isArray(modulesResponse) ? modulesResponse : [];
 
         // Format the response as a table
         let responseText = 'Bot Modules:\n';
