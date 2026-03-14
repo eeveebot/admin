@@ -744,11 +744,11 @@ const routerResponseSub = nats.subscribe(
       } else {
         // Create ASCII table header
         responseText +=
-          '+----------------------+----------------------------+--------+----------+----------+\n';
+          '+------------------------+----------------------------+--------+----------+----------+\n';
         responseText +=
-          '| Command Name         | Identifier                 | Count  | Limit    | Interval |\n';
+          '| Command Name           | Identifier                 | Count  | Limit    | Interval |\n';
         responseText +=
-          '+----------------------+----------------------------+--------+----------+----------+\n';
+          '+------------------------+----------------------------+--------+----------+----------+\n';
 
         // Add each rate limit entry
         for (const [key, stat] of Object.entries(data.stats)) {
@@ -765,19 +765,19 @@ const routerResponseSub = nats.subscribe(
           // Use command name if available, otherwise fallback to UUID
           const commandName = typedStat.commandName || commandUUID;
           const displayName =
-            commandName.length > 20
-              ? commandName.substring(0, 17) + '...'
+            commandName.length > 22
+              ? commandName.substring(0, 19) + '...'
               : commandName;
           const displayIdentifier =
             identifier.length > 28
               ? '...' + identifier.substring(identifier.length - 25)
               : identifier;
 
-          responseText += `| ${displayName.padEnd(20)} | ${displayIdentifier.padEnd(28)} | ${typedStat.count.toString().padEnd(6)} | ${typedStat.limit.toString().padEnd(8)} | ${typedStat.interval.padEnd(8)} |\n`;
+          responseText += `| ${displayName.padEnd(22)} | ${displayIdentifier.padEnd(28)} | ${typedStat.count.toString().padEnd(6)} | ${typedStat.limit.toString().padEnd(8)} | ${typedStat.interval.padEnd(8)} |\n`;
         }
 
         responseText +=
-          '+----------------------+----------------------------+--------+----------+----------+\n';
+          '+------------------------+----------------------------+--------+----------+----------+\n';
         responseText += `Total entries: ${Object.keys(data.stats).length}\n`;
       }
 
