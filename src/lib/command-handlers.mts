@@ -1124,37 +1124,53 @@ export async function handleBotStatsCommand(
           clearTimeout(timeoutId);
         }
 
-        // Format the responses as a message
-        let responseText = 'Bot Statistics Report:\n';
+// Format the responses as a message
+      let responseText = 'Bot Statistics Report:\n';
 
-        if (responses.length === 0) {
-          responseText += 'No modules responded within the timeout period.\n';
-        } else {
-          // Sort responses by module name
-          responses.sort((a, b) => a.module.localeCompare(b.module));
+      if (responses.length === 0) {
+        responseText += 'No modules responded within the timeout period.\n';
+      } else {
+        // Sort responses by module name
+        responses.sort((a, b) => a.module.localeCompare(b.module));
 
-          // Create a formatted table using ascii-table
-          const table = new AsciiTable();
-          table.setHeading('Module', 'Stats');
-
-          for (const response of responses) {
-            // Format stats as a string
-            let statsStr = '';
-            if (response.stats) {
-              for (const [key, value] of Object.entries(response.stats)) {
-                statsStr += `${key}: ${value} `;
+        // Process each module's stats
+        for (const response of responses) {
+          responseText += `\n=== ${response.module} ===\n`;
+          
+          if (response.stats) {
+            // Handle prometheus metrics specially if they exist
+            if (response.stats.prometheus_metrics) {
+              // Add uptime info first
+              if (response.stats.uptime_seconds !== undefined) {
+                responseText += `Uptime: ${response.stats.uptime_formatted || 'N/A'} (${response.stats.uptime_seconds}s)\n`;
               }
+              
+              // Add a note about prometheus metrics being available
+              responseText += 'Prometheus metrics collected (see below)\n';
             } else {
-              statsStr = 'No stats available';
+              // Display regular stats in key-value format
+              for (const [key, value] of Object.entries(response.stats)) {
+                responseText += `${key}: ${value}\n`;
+              }
             }
-
-            table.addRow(response.module, statsStr.trim());
+          } else {
+            responseText += 'No stats available\n';
           }
-
-          responseText += table.toString() + '\n';
-          responseText += `Total modules: ${responses.length}\n`;
-          responseText += `Expected modules: ${moduleNames.length}\n`;
         }
+        
+        // Add prometheus metrics section at the end if any module has them
+        const modulesWithPrometheus = responses.filter(r => r.stats?.prometheus_metrics);
+        if (modulesWithPrometheus.length > 0) {
+          responseText += '\n--- Prometheus Metrics ---\n';
+          for (const response of modulesWithPrometheus) {
+            responseText += `\n${response.module}:\n`;
+            responseText += response.stats?.prometheus_metrics || 'No metrics available';
+          }
+        }
+
+        responseText += `\n\nTotal modules: ${responses.length}\n`;
+        responseText += `Expected modules: ${moduleNames.length}\n`;
+      }
 
         // Send the response back to the user/channel
         const responseMessage = {
