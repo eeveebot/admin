@@ -6,6 +6,7 @@
 import { NatsClient, log } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
+import * as crypto from 'crypto';
 
 // Record module startup time for uptime tracking
 const moduleStartTime = Date.now();
@@ -17,10 +18,13 @@ const adminJoinCommandUUID: string = '20a6f27e-bd12-4c5c-931e-cb4a232b2ce5';
 const adminPartCommandUUID: string = '8d5c0a13-1336-4882-aa41-00a068b2aa00';
 const adminShowRatelimitsCommandUUID: string =
   '2bbfdf48-4cab-4200-b8a6-521036ffa87e';
+const adminModuleUptimeCommandUUID: string =
+  'f8e8a7b2-4c1d-4e5f-9a2b-3c4d5e6f7g8h';
 
 const adminJoinCommandDisplayName: string = 'admin-join';
 const adminPartCommandDisplayName: string = 'admin-part';
 const adminShowRatelimitsCommandDisplayName: string = 'admin-show-ratelimits';
+const adminModuleUptimeCommandDisplayName: string = 'admin-module-uptime';
 
 //
 // Do whatever teardown is necessary before calling common handler
@@ -138,6 +142,12 @@ async function registerAdminCommands(): Promise<void> {
       limit: 3,
       interval: '1m',
     },
+    moduleUptime: {
+      mode: 'drop',
+      level: 'user',
+      limit: 5,
+      interval: '1m',
+    },
   };
 
   // Use configured rate limits or defaults
@@ -145,6 +155,8 @@ async function registerAdminCommands(): Promise<void> {
   const partRateLimit = adminConfig.ratelimits?.part || defaultRateLimits.part;
   const showRatelimitsRateLimit =
     adminConfig.ratelimits?.showRatelimits || defaultRateLimits.showRatelimits;
+  const moduleUptimeRateLimit =
+    adminConfig.ratelimits?.moduleUptime || defaultRateLimits.moduleUptime;
 
   const commands = [
     {
@@ -185,6 +197,19 @@ async function registerAdminCommands(): Promise<void> {
       regex: 'admin show-ratelimits',
       platformPrefixAllowed: true,
       ratelimit: showRatelimitsRateLimit,
+    },
+    {
+      type: 'command.register',
+      commandUUID: adminModuleUptimeCommandUUID,
+      commandDisplayName: adminModuleUptimeCommandDisplayName,
+      platform: '.*',
+      network: '.*',
+      instance: '.*',
+      channel: '.*',
+      user: '.*',
+      regex: 'admin module-uptime',
+      platformPrefixAllowed: true,
+      ratelimit: moduleUptimeRateLimit,
     },
   ];
 
@@ -414,6 +439,124 @@ const showRatelimitsCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(showRatelimitsCommandSub);
 
+// Subscribe to module-uptime command execution messages
+const moduleUptimeCommandSub = nats.subscribe(
+  `command.execute.${adminModuleUptimeCommandUUID}`,
+  (subject, message) => {
+    try {
+      const data = JSON.parse(message.string());
+      log.info('Received command.execute for module-uptime', {
+        producer: 'admin',
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        originalText: data.originalText,
+      });
+
+      // Check if user is authenticated admin
+      if (!isAuthenticatedAdmin(data.platform, data.user, data.userHost)) {
+        log.warn('Unauthorized module-uptime command attempt', {
+          producer: 'admin',
+          platform: data.platform,
+          user: data.user,
+          userHost: data.userHost,
+          channel: data.channel,
+        });
+        return;
+      }
+
+      // Generate a unique reply channel for this request
+      const replyChannel = `stats.uptime.reply.${crypto.randomUUID()}`;
+
+      // Store responses we receive
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const responses: any[] = [];
+
+      // Subscribe to the reply channel to collect responses
+      void nats.subscribe(replyChannel, (replySubject, replyMessage) => {
+        try {
+          const replyData = JSON.parse(replyMessage.string());
+          responses.push(replyData);
+        } catch (error) {
+          log.error('Failed to parse uptime response', {
+            producer: 'admin',
+            error: error,
+          });
+        }
+      }).then((sub) => {
+        if (sub && typeof sub === 'string') {
+          // We'll let the subscription naturally expire
+          // In a production system, we might want to track and clean these up
+        }
+      });
+
+      // Send stats.uptime request to all modules
+      const uptimeRequest = {
+        replyChannel: replyChannel,
+      };
+      void nats.publish('stats.uptime', JSON.stringify(uptimeRequest));
+
+      // Wait 5 seconds for modules to respond
+      setTimeout(() => {
+        // Format the responses as a message
+        let responseText = 'Module Uptime Report:\n';
+        
+        if (responses.length === 0) {
+          responseText += 'No modules responded within the timeout period.\n';
+        } else {
+          // Sort responses by module name
+          responses.sort((a, b) => a.module.localeCompare(b.module));
+          
+          // Create a formatted table
+          responseText += '+------------------+---------------------+\n';
+          responseText += '| Module           | Uptime              |\n';
+          responseText += '+------------------+---------------------+\n';
+          
+          for (const response of responses) {
+            const moduleName = response.module.length > 16 
+              ? response.module.substring(0, 13) + '...' 
+              : response.module;
+            responseText += `| ${moduleName.padEnd(16)} | ${response.uptimeFormatted.padEnd(19)} |\n`;
+          }
+          
+          responseText += '+------------------+---------------------+\n';
+          responseText += `Total modules: ${responses.length}\n`;
+        }
+
+        // Send the response back to the user/channel
+        const responseMessage = {
+          platform: data.platform,
+          instance: data.instance,
+          channel: data.channel,
+          user: data.user,
+          text: responseText,
+          trace: data.trace,
+        };
+
+        const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+        void nats.publish(responseTopic, JSON.stringify(responseMessage));
+
+        log.info('Sent module uptime report to user', {
+          producer: 'admin',
+          user: data.user,
+          channel: data.channel,
+          platform: data.platform,
+          instance: data.instance,
+          moduleCount: responses.length,
+        });
+      }, 5000); // 5 second timeout
+    } catch (error) {
+      log.error('Failed to process module-uptime command', {
+        producer: 'admin',
+        message: message.string(),
+        error: error,
+      });
+    }
+  }
+);
+natsSubscriptions.push(moduleUptimeCommandSub);
+
 // Subscribe to router responses with rate limit statistics
 const routerResponseSub = nats.subscribe(
   'admin.response.router.ratelimit-stats',
@@ -541,6 +684,20 @@ const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
   }
 );
 
+// Subscribe to control messages for re-registering module-uptime command
+const controlSubRegisterCommandAdminModuleUptime = nats.subscribe(
+  `control.registerCommands.${adminModuleUptimeCommandDisplayName}`,
+  () => {
+    log.info(
+      `Received control.registerCommands.${adminModuleUptimeCommandDisplayName} control message`,
+      {
+        producer: 'admin',
+      }
+    );
+    void registerAdminCommands();
+  }
+);
+
 const controlSubRegisterCommandAll = nats.subscribe(
   'control.registerCommands',
   () => {
@@ -584,6 +741,7 @@ natsSubscriptions.push(
   controlSubRegisterCommandAdminJoin,
   controlSubRegisterCommandAdminPart,
   controlSubRegisterCommandAdminShowRatelimits,
+  controlSubRegisterCommandAdminModuleUptime,
   controlSubRegisterCommandAll,
   statsUptimeSub
 );
