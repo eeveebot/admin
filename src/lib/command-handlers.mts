@@ -1126,6 +1126,153 @@ export async function handleBotStatsCommand(
       const expectedResponses = new Set(moduleNames);
       let allResponsesReceived = false;
 
+      // Function to generate detailed statistics report
+      const generateDetailedStatsReport = (responses: StatsResponse[]): string => {
+        try {
+          if (responses.length === 0) return '';
+
+          // Aggregate statistics
+          let totalMessages = 0;
+          let totalCommands = 0;
+          let totalBroadcasts = 0;
+          let totalErrors = 0;
+          let totalMemoryMB = 0;
+          let avgMessageTime = 0;
+          let avgCommandTime = 0;
+          let messageTimeSamples = 0;
+          let commandTimeSamples = 0;
+          
+          // Collect timing data for percentiles
+          const allMessageTimes: number[] = [];
+          const allCommandTimes: number[] = [];
+          
+          // Count modules with issues
+          let modulesWithErrors = 0;
+          let modulesWithHighLatency = 0;
+
+          // Process each response
+          for (const response of responses) {
+            if (response.stats) {
+              let parsedStats = response.stats;
+              if (response.stats.prometheus_metrics) {
+                // Merge parsed Prometheus metrics with existing stats
+                parsedStats = {
+                  ...response.stats,
+                  ...parsePrometheusMetrics(
+                    response.stats.prometheus_metrics as string
+                  ),
+                };
+              }
+              
+              // Aggregate counters
+              if (parsedStats.messages_processed_count !== undefined) {
+                totalMessages += Number(parsedStats.messages_processed_count);
+              }
+              
+              if (parsedStats.commands_processed_count !== undefined) {
+                totalCommands += Number(parsedStats.commands_processed_count);
+              }
+              
+              if (parsedStats.broadcasts_processed_count !== undefined) {
+                totalBroadcasts += Number(parsedStats.broadcasts_processed_count);
+              }
+              
+              if (parsedStats.errors_total !== undefined) {
+                const errors = Number(parsedStats.errors_total);
+                totalErrors += errors;
+                if (errors > 0) {
+                  modulesWithErrors++;
+                }
+              }
+              
+              // Aggregate memory
+              if (parsedStats.memory_rss_mb !== undefined) {
+                totalMemoryMB += Number(parsedStats.memory_rss_mb);
+              }
+              
+              // Aggregate timing averages
+              if (parsedStats.message_avg_processing_time_ms !== undefined) {
+                avgMessageTime += Number(parsedStats.message_avg_processing_time_ms);
+                messageTimeSamples++;
+                allMessageTimes.push(Number(parsedStats.message_avg_processing_time_ms));
+              }
+              
+              if (parsedStats.command_avg_processing_time_ms !== undefined) {
+                avgCommandTime += Number(parsedStats.command_avg_processing_time_ms);
+                commandTimeSamples++;
+                allCommandTimes.push(Number(parsedStats.command_avg_processing_time_ms));
+              }
+              
+              // Check for high latency modules
+              if ((parsedStats.message_avg_processing_time_ms !== undefined && 
+                   Number(parsedStats.message_avg_processing_time_ms) > 100) ||
+                  (parsedStats.command_avg_processing_time_ms !== undefined && 
+                   Number(parsedStats.command_avg_processing_time_ms) > 100)) {
+                modulesWithHighLatency++;
+              }
+            }
+          }
+          
+          // Calculate averages
+          const avgMessageTimeMs = messageTimeSamples > 0 ? Math.round(avgMessageTime / messageTimeSamples) : 0;
+          const avgCommandTimeMs = commandTimeSamples > 0 ? Math.round(avgCommandTime / commandTimeSamples) : 0;
+          
+          // Calculate percentiles for timing
+          const calculatePercentile = (arr: number[], percentile: number): number => {
+            if (arr.length === 0) return 0;
+            arr.sort((a, b) => a - b);
+            const index = Math.floor(arr.length * percentile);
+            return arr[index];
+          };
+          
+          const messageP95 = calculatePercentile(allMessageTimes, 0.95);
+          const commandP95 = calculatePercentile(allCommandTimes, 0.95);
+          
+          // Calculate error rate
+          const totalProcessed = totalMessages + totalCommands;
+          const errorRate = totalProcessed > 0 ? Math.round((totalErrors / totalProcessed) * 10000) / 100 : 0;
+          
+          // Generate report
+          let report = '=== Analysis:\n';
+          report += `├─ Total Messages: ${totalMessages.toLocaleString()}\n`;
+          report += `├─ Total Commands: ${totalCommands.toLocaleString()}\n`;
+          report += `├─ Total Broadcasts: ${totalBroadcasts.toLocaleString()}\n`;
+          report += `├─ Total Errors: ${totalErrors.toLocaleString()} (${errorRate}%)\n`;
+          report += `├─ Total Memory Usage: ${totalMemoryMB.toLocaleString()} MB\n`;
+          
+          if (avgMessageTimeMs > 0) {
+            report += `├─ Avg Message Processing: ${avgMessageTimeMs}ms (p95: ${messageP95}ms)\n`;
+          }
+          
+          if (avgCommandTimeMs > 0) {
+            report += `├─ Avg Command Processing: ${avgCommandTimeMs}ms (p95: ${commandP95}ms)\n`;
+          }
+          
+          // Add warnings if needed
+          const warnings: string[] = [];
+          if (modulesWithErrors > 0) {
+            warnings.push(`${modulesWithErrors} modules with errors`);
+          }
+          if (modulesWithHighLatency > 0) {
+            warnings.push(`${modulesWithHighLatency} modules with high latency (>100ms)`);
+          }
+          
+          if (warnings.length > 0) {
+            report += `└─ ⚠️  Warnings: ${warnings.join(', ')}\n`;
+          } else {
+            report += '└─ ✅ All modules healthy\n';
+          }
+          
+          return report;
+        } catch (error) {
+          log.error('Failed to generate detailed stats report', {
+            producer: 'admin',
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return '';
+        }
+      };
+
       // Function to send the stats report
       const sendStatsReport = () => {
         // Clear the timeout if it's still active
@@ -1159,10 +1306,12 @@ export async function handleBotStatsCommand(
                 // Merge parsed Prometheus metrics with existing stats
                 parsedStats = {
                   ...response.stats,
-                  ...parsePrometheusMetrics(response.stats.prometheus_metrics as string)
+                  ...parsePrometheusMetrics(
+                    response.stats.prometheus_metrics as string
+                  ),
                 };
               }
-              
+
               // Extract uptime info
               if (parsedStats.uptime_seconds !== undefined) {
                 uptime = parsedStats.uptime_formatted
@@ -1177,81 +1326,39 @@ export async function handleBotStatsCommand(
 
               // Memory usage if available
               if (parsedStats.memory_rss_mb !== undefined) {
-                metrics.push(
-                  `Memory: ${String(parsedStats.memory_rss_mb)}MB`
-                );
-              } else if (parsedStats.memory_heap_used_mb !== undefined) {
-                metrics.push(
-                  `Heap: ${String(parsedStats.memory_heap_used_mb)}MB`
-                );
+                metrics.push(`Mem: ${String(parsedStats.memory_rss_mb)}MB`);
               }
 
               // Message counts if available
               if (parsedStats.messages_processed_count !== undefined) {
-                metrics.push(
-                  `Msgs: ${String(parsedStats.messages_processed_count)}`
-                );
-              } else if (
-                parsedStats.commands_processed_count !== undefined
-              ) {
-                metrics.push(
-                  `Cmds: ${String(parsedStats.commands_processed_count)}`
-                );
+                metrics.push(`Msgs: ${String(parsedStats.messages_processed_count)}`);
+              }
+
+              // Command counts if available
+              if (parsedStats.commands_processed_count !== undefined) {
+                metrics.push(`Cmds: ${String(parsedStats.commands_processed_count)}`);
               }
 
               // Broadcast counts if available
               if (parsedStats.broadcasts_processed_count !== undefined) {
-                metrics.push(
-                  `Broadcasts: ${String(parsedStats.broadcasts_processed_count)}`
-                );
+                metrics.push(`Bcasts: ${String(parsedStats.broadcasts_processed_count)}`);
               }
 
-              // Error counts if available
-              if (parsedStats.errors_total !== undefined) {
-                metrics.push(`Errors: ${String(parsedStats.errors_total)}`);
+              // Error information if available
+              if (parsedStats.errors_total !== undefined && parsedStats.error_rate_percent !== undefined) {
+                metrics.push(`Err: ${String(parsedStats.errors_total)} (${String(parsedStats.error_rate_percent)}%)`);
+              } else if (parsedStats.errors_total !== undefined) {
+                metrics.push(`Err: ${String(parsedStats.errors_total)}`);
               }
 
-              keyMetrics =
-                metrics.length > 0 ? metrics.join(', ') : 'No key metrics';
-
-              // Memory usage if available
-              if (parsedStats.memory_rss_mb !== undefined) {
-                metrics.push(
-                  `Memory: ${String(parsedStats.memory_rss_mb)}MB`
-                );
-              } else if (parsedStats.memory_heap_used_mb !== undefined) {
-                metrics.push(
-                  `Heap: ${String(parsedStats.memory_heap_used_mb)}MB`
-                );
+              // Timing information if available
+              if (parsedStats.message_avg_processing_time_ms !== undefined) {
+                metrics.push(`MsgTime: ${String(parsedStats.message_avg_processing_time_ms)}ms`);
+              } else if (parsedStats.command_avg_processing_time_ms !== undefined) {
+                metrics.push(`CmdTime: ${String(parsedStats.command_avg_processing_time_ms)}ms`);
               }
 
-              // Message counts if available
-              if (parsedStats.messages_processed_count !== undefined) {
-                metrics.push(
-                  `Msgs: ${String(parsedStats.messages_processed_count)}`
-                );
-              } else if (
-                parsedStats.commands_processed_count !== undefined
-              ) {
-                metrics.push(
-                  `Cmds: ${String(parsedStats.commands_processed_count)}`
-                );
-              }
-
-              // Broadcast counts if available
-              if (parsedStats.broadcasts_processed_count !== undefined) {
-                metrics.push(
-                  `Broadcasts: ${String(parsedStats.broadcasts_processed_count)}`
-                );
-              }
-
-              // Error counts if available
-              if (parsedStats.errors_total !== undefined) {
-                metrics.push(`Errors: ${String(parsedStats.errors_total)}`);
-              }
-
-              keyMetrics =
-                metrics.length > 0 ? metrics.join(', ') : 'No key metrics';
+              keyMetrics = metrics.length > 0 ? metrics.join(' | ') : 'No key metrics';
             } else {
               status = 'No Stats';
             }
@@ -1260,6 +1367,12 @@ export async function handleBotStatsCommand(
           }
 
           responseText += table.toString() + '\n';
+
+          // Add detailed statistics and analysis
+          const detailedStats = generateDetailedStatsReport(responses);
+          if (detailedStats) {
+            responseText += '\n' + detailedStats + '\n';
+          }
 
           // Add summary
           responseText += `\nSummary: ${responses.length}/${moduleNames.length} modules responded\n`;

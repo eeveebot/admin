@@ -86,6 +86,10 @@ export function parsePrometheusMetrics(metricsText: string): Record<string, numb
     let totalBroadcasts = 0;
     let totalErrors = 0;
     
+    // Store timing metrics for analysis
+    const messageTiming: number[] = [];
+    const commandTiming: number[] = [];
+    
     // Process each line
     for (const line of lines) {
       // Skip comments and empty lines
@@ -138,6 +142,72 @@ export function parsePrometheusMetrics(metricsText: string): Record<string, numb
         result.uptime_seconds = seconds;
         result.uptime_formatted = `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ${Math.floor(seconds % 60)}s`;
       }
+      
+      // Parse timing histogram metrics (buckets)
+      // Message processing time buckets
+      const messageTimingMatch = line.match(/^router_message_processing_seconds_bucket\{[^}]*le="([^"]+)"\}\s+(\d+)/);
+      if (messageTimingMatch) {
+        const bucket = parseFloat(messageTimingMatch[1]);
+        const count = parseInt(messageTimingMatch[2], 10);
+        // Store timing data for analysis
+        for (let i = 0; i < count; i++) {
+          messageTiming.push(bucket);
+        }
+      }
+      
+      // Command processing time buckets
+      const commandTimingMatch = line.match(/^router_command_processing_seconds_bucket\{[^}]*le="([^"]+)"\}\s+(\d+)/);
+      if (commandTimingMatch) {
+        const bucket = parseFloat(commandTimingMatch[1]);
+        const count = parseInt(commandTimingMatch[2], 10);
+        // Store timing data for analysis
+        for (let i = 0; i < count; i++) {
+          commandTiming.push(bucket);
+        }
+      }
+      
+      // Parse timing summary metrics
+      const messageTimeSumMatch = line.match(/^router_message_processing_seconds_sum\s+(\d+(?:\.\d+)?)/);
+      if (messageTimeSumMatch && totalMessages > 0) {
+        const sum = parseFloat(messageTimeSumMatch[1]);
+        result.message_avg_processing_time_ms = Math.round((sum / totalMessages) * 1000);
+      }
+      
+      const messageTimeCountMatch = line.match(/^router_message_processing_seconds_count\s+(\d+)/);
+      if (messageTimeCountMatch) {
+        result.message_processing_count = parseInt(messageTimeCountMatch[1], 10);
+      }
+      
+      const commandTimeSumMatch = line.match(/^router_command_processing_seconds_sum\s+(\d+(?:\.\d+)?)/);
+      if (commandTimeSumMatch && totalCommands > 0) {
+        const sum = parseFloat(commandTimeSumMatch[1]);
+        result.command_avg_processing_time_ms = Math.round((sum / totalCommands) * 1000);
+      }
+      
+      const commandTimeCountMatch = line.match(/^router_command_processing_seconds_count\s+(\d+)/);
+      if (commandTimeCountMatch) {
+        result.command_processing_count = parseInt(commandTimeCountMatch[1], 10);
+      }
+    }
+    
+    // Calculate percentiles for timing metrics if we have data
+    if (messageTiming.length > 0) {
+      messageTiming.sort((a, b) => a - b);
+      result.message_p50_time_ms = Math.round(messageTiming[Math.floor(messageTiming.length * 0.5)] * 1000);
+      result.message_p95_time_ms = Math.round(messageTiming[Math.floor(messageTiming.length * 0.95)] * 1000);
+      result.message_p99_time_ms = Math.round(messageTiming[Math.floor(messageTiming.length * 0.99)] * 1000);
+    }
+    
+    if (commandTiming.length > 0) {
+      commandTiming.sort((a, b) => a - b);
+      result.command_p50_time_ms = Math.round(commandTiming[Math.floor(commandTiming.length * 0.5)] * 1000);
+      result.command_p95_time_ms = Math.round(commandTiming[Math.floor(commandTiming.length * 0.95)] * 1000);
+      result.command_p99_time_ms = Math.round(commandTiming[Math.floor(commandTiming.length * 0.99)] * 1000);
+    }
+    
+    // Calculate error rates if we have sufficient data
+    if (totalMessages > 0) {
+      result.error_rate_percent = Math.round((totalErrors / totalMessages) * 10000) / 100;
     }
     
     return result;
