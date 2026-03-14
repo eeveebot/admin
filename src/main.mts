@@ -21,11 +21,11 @@ const adminPartCommandUUID: string = '8d5c0a13-1336-4882-aa41-00a068b2aa00';
 const adminShowRatelimitsCommandUUID: string =
   '2bbfdf48-4cab-4200-b8a6-521036ffa87e';
 const adminShowCommandRegistryCommandUUID: string =
-  'd7f3b4e2-8c1a-4d5f-9a2b-3c4d5e6f7g8h';
+  '13576a4e-f6a5-4659-99d0-4cab09a9158c';
 const adminModuleUptimeCommandUUID: string =
-  'f8e8a7b2-4c1d-4e5f-9a2b-3c4d5e6f7g8h';
+  'f8e8a7b2-4c1d-4e5f-9a2b-3c4d5e6f7890';
 const adminModuleRestartCommandUUID: string =
-  'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  '13576a4e-f6a5-4659-99d0-4cab09a9158c';
 
 const adminJoinCommandDisplayName: string = 'admin-join';
 const adminPartCommandDisplayName: string = 'admin-part';
