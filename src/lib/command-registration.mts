@@ -207,7 +207,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+join\\s+', // Match admin join command at start of line
+      regex: '^admin join', // Match admin join command at start of line
       platformPrefixAllowed: true,
       ratelimit: joinRateLimit,
     },
@@ -220,7 +220,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+part\\s+', // Match admin part command at start of line
+      regex: '^admin part', // Match admin part command at start of line
       platformPrefixAllowed: true,
       ratelimit: partRateLimit,
     },
@@ -233,7 +233,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+show-ratelimits\\s*', // Match admin show-ratelimits command at start of line
+      regex: '^admin show-ratelimits', // Match admin show-ratelimits command at start of line
       platformPrefixAllowed: true,
       ratelimit: showRatelimitsRateLimit,
     },
@@ -246,7 +246,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+show-command-registry\\s*', // Match admin show-command-registry command at start of line
+      regex: '^admin show-command-registry', // Match admin show-command-registry command at start of line
       platformPrefixAllowed: true,
       ratelimit: showCommandRegistryRateLimit,
     },
@@ -259,7 +259,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+module-uptime\\s*', // Match admin module-uptime command at start of line
+      regex: '^admin module-uptime', // Match admin module-uptime command at start of line
       platformPrefixAllowed: true,
       ratelimit: moduleUptimeRateLimit,
     },
@@ -272,7 +272,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+module-restart\\s*', // Match admin module-restart command at start of line
+      regex: '^admin module-restart', // Match admin module-restart command at start of line
       platformPrefixAllowed: true,
       ratelimit: moduleRestartRateLimit,
     },
@@ -285,7 +285,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+list-bot-modules\\s*', // Match admin list-bot-modules command at start of line
+      regex: '^admin list-bot-modules', // Match admin list-bot-modules command at start of line
       platformPrefixAllowed: true,
       ratelimit: listBotModulesRateLimit,
     },
@@ -298,7 +298,7 @@ export async function registerAdminCommands(
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: '^admin\\s+bot-stats\\s*', // Match admin bot-stats command at start of line
+      regex: '^admin bot-stats', // Match admin bot-stats command at start of line
       platformPrefixAllowed: true,
       ratelimit: botStatsRateLimit,
     },
