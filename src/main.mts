@@ -1002,19 +1002,42 @@ const listBotModulesCommandSub = nats.subscribe(
         }
 
         // Fetch bot modules from operator API
-        const response = await fetch(`${apiUrl}/api/bot-modules`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        let response;
+        try {
+          response = await fetch(`${apiUrl}/api/bot-modules`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${apiToken}`,
+              'Content-Type': 'application/json',
+            },
+          });
+        } catch (fetchError) {
+          log.error('Failed to connect to operator API', {
+            producer: 'admin',
+            error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+          });
+          
+          // Send error message back to user
+          const responseMessage = {
+            platform: data.platform,
+            instance: data.instance,
+            channel: data.channel,
+            user: data.user,
+            text: 'Error: Failed to connect to operator API',
+            trace: data.trace,
+          };
+
+          const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+          void nats.publish(responseTopic, JSON.stringify(responseMessage));
+          return;
+        }
 
         if (!response.ok) {
           const errorText = await response.text();
           log.error('Failed to fetch bot modules from operator API', {
             producer: 'admin',
             status: response.status,
+            statusText: response.statusText,
             error: errorText,
           });
           
@@ -1024,7 +1047,7 @@ const listBotModulesCommandSub = nats.subscribe(
             instance: data.instance,
             channel: data.channel,
             user: data.user,
-            text: `Error: Failed to fetch bot modules. Status: ${response.status}`,
+            text: `Error: Failed to fetch bot modules. Status: ${response.status} (${response.statusText})`,
             trace: data.trace,
           };
 
@@ -1033,7 +1056,30 @@ const listBotModulesCommandSub = nats.subscribe(
           return;
         }
 
-        const modulesResponse = await response.json();
+        let modulesResponse;
+        try {
+          modulesResponse = await response.json();
+        } catch (parseError) {
+          log.error('Failed to parse bot modules response from operator API', {
+            producer: 'admin',
+            error: parseError instanceof Error ? parseError.message : String(parseError),
+          });
+          
+          // Send error message back to user
+          const responseMessage = {
+            platform: data.platform,
+            instance: data.instance,
+            channel: data.channel,
+            user: data.user,
+            text: 'Error: Failed to parse response from operator API',
+            trace: data.trace,
+          };
+
+          const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+          void nats.publish(responseTopic, JSON.stringify(responseMessage));
+          return;
+        }
+
         const modules: Array<{name: string; namespace: string; image: string; tag: string; enabled: boolean}> = Array.isArray(modulesResponse) ? modulesResponse : [];
 
         // Format the response as a table
@@ -1087,6 +1133,7 @@ const listBotModulesCommandSub = nats.subscribe(
           producer: 'admin',
           message: message.string(),
           error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
         });
         
         // Try to send error message back to user
@@ -1097,7 +1144,7 @@ const listBotModulesCommandSub = nats.subscribe(
             instance: data.instance,
             channel: data.channel,
             user: data.user,
-            text: 'Error: Failed to process list-bot-modules command',
+            text: `Error: Failed to process list-bot-modules command: ${error instanceof Error ? error.message : String(error)}`,
             trace: data.trace,
           };
 
