@@ -7,6 +7,9 @@ import { NatsClient, log } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
 
+// Record module startup time for uptime tracking
+const moduleStartTime = Date.now();
+
 const natsClients: InstanceType<typeof NatsClient>[] = [];
 const natsSubscriptions: Array<Promise<string | boolean>> = [];
 
@@ -547,9 +550,40 @@ const controlSubRegisterCommandAll = nats.subscribe(
     void registerAdminCommands();
   }
 );
+
+// Subscribe to stats.uptime messages and respond with module uptime
+const statsUptimeSub = nats.subscribe('stats.uptime', (subject, message) => {
+  try {
+    const data = JSON.parse(message.string());
+    log.info('Received stats.uptime request', {
+      producer: 'admin',
+      replyChannel: data.replyChannel,
+    });
+
+    // Calculate uptime in milliseconds
+    const uptime = Date.now() - moduleStartTime;
+
+    // Send uptime back via the ephemeral reply channel
+    const uptimeResponse = {
+      module: 'admin',
+      uptime: uptime,
+      uptimeFormatted: `${Math.floor(uptime / 86400000)}d ${Math.floor((uptime % 86400000) / 3600000)}h ${Math.floor((uptime % 3600000) / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
+    };
+
+    if (data.replyChannel) {
+      void nats.publish(data.replyChannel, JSON.stringify(uptimeResponse));
+    }
+  } catch (error) {
+    log.error('Failed to process stats.uptime request', {
+      producer: 'admin',
+      error: error,
+    });
+  }
+});
 natsSubscriptions.push(
   controlSubRegisterCommandAdminJoin,
   controlSubRegisterCommandAdminPart,
   controlSubRegisterCommandAdminShowRatelimits,
-  controlSubRegisterCommandAll
+  controlSubRegisterCommandAll,
+  statsUptimeSub
 );
