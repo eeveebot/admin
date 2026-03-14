@@ -6,6 +6,27 @@ import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from './auth.mjs';
 
+// Interfaces for type safety
+interface UptimeResponse {
+  module: string;
+  uptimeFormatted: string;
+  [key: string]: string | number | boolean | object | null | undefined;
+}
+
+interface StatsResponse {
+  module: string;
+  stats: Record<string, string | number | boolean | object | null | undefined>;
+  [key: string]: string | number | boolean | object | null | undefined;
+}
+
+interface BotModule {
+  name: string;
+  namespace: string;
+  image: string;
+  tag: string;
+  enabled: boolean;
+}
+
 /**
  * Handle the admin join command
  * @param nats - The NATS client instance
@@ -369,41 +390,106 @@ export async function handleModuleUptimeCommand(
       return;
     }
 
+    // Get required environment variables for operator API
+    const apiToken = process.env.EEVEE_OPERATOR_API_TOKEN;
+    const apiUrl = process.env.EEVEE_OPERATOR_API_URL;
+
+    if (!apiToken || !apiUrl) {
+      log.error(
+        'Missing EEVEE_OPERATOR_API_TOKEN or EEVEE_OPERATOR_API_URL environment variables',
+        {
+          producer: 'admin',
+        }
+      );
+      
+      // Send error message back to user
+      const errorMessage = {
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        text: 'Error: Missing operator API configuration',
+        trace: data.trace,
+      };
+
+      const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+      void nats.publish(errorTopic, JSON.stringify(errorMessage));
+      return;
+    }
+
+    // Fetch bot modules from operator API
+    let modulesResponse;
+    try {
+      const response = await fetch(`${apiUrl}/api/bot-modules`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Operator API returned status ${response.status}`);
+      }
+
+      modulesResponse = await response.json();
+    } catch (fetchError) {
+      log.error('Failed to fetch bot modules from operator API', {
+        producer: 'admin',
+        error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+      });
+
+      // Send error message back to user
+      const errorMessage = {
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        text: 'Error: Failed to fetch bot modules from operator',
+        trace: data.trace,
+      };
+
+      const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+      void nats.publish(errorTopic, JSON.stringify(errorMessage));
+      return;
+      }
+
+      // Extract module names from the response
+      const moduleNames: string[] = Array.isArray(modulesResponse) 
+        ? (modulesResponse as BotModule[]).map((module) => module.name).filter(Boolean)
+        : [];
+
+    if (moduleNames.length === 0) {
+      // Send message back to user that no modules were found
+      const responseMessage = {
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        text: 'No bot modules found in the system.',
+        trace: data.trace,
+      };
+
+      const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+      void nats.publish(responseTopic, JSON.stringify(responseMessage));
+      return;
+    }
+
     // Generate a unique reply channel for this request
     const replyChannel = `stats.uptime.reply.${crypto.randomUUID()}`;
 
     // Store responses we receive
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const responses: any[] = [];
+    const responses: UptimeResponse[] = [];
+    const expectedResponses = new Set(moduleNames);
+    let allResponsesReceived = false;
 
-    // Subscribe to the reply channel to collect responses
-    void nats
-      .subscribe(replyChannel, (replySubject, replyMessage) => {
-        try {
-          const replyData = JSON.parse(replyMessage.string());
-          responses.push(replyData);
-        } catch (error) {
-          log.error('Failed to parse uptime response', {
-            producer: 'admin',
-            error: error,
-          });
-        }
-      })
-      .then((sub) => {
-        if (sub && typeof sub === 'string') {
-          // We'll let the subscription naturally expire
-          // In a production system, we might want to track and clean these up
-        }
-      });
+    // Function to send the uptime report
+    const sendUptimeReport = () => {
+      // Clear the timeout if it's still active
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
-    // Send stats.uptime request to all modules
-    const uptimeRequest = {
-      replyChannel: replyChannel,
-    };
-    void nats.publish('stats.uptime', JSON.stringify(uptimeRequest));
-
-    // Wait 5 seconds for modules to respond
-    setTimeout(() => {
       // Format the responses as a message
       let responseText = 'Module Uptime Report:\n';
 
@@ -423,6 +509,7 @@ export async function handleModuleUptimeCommand(
 
         responseText += table.toString() + '\n';
         responseText += `Total modules: ${responses.length}\n`;
+        responseText += `Expected modules: ${moduleNames.length}\n`;
       }
 
       // Send the response back to the user/channel
@@ -445,7 +532,46 @@ export async function handleModuleUptimeCommand(
         platform: data.platform,
         instance: data.instance,
         moduleCount: responses.length,
+        expectedModules: moduleNames.length,
       });
+    };
+
+    // Subscribe to the reply channel to collect responses
+    await nats.subscribe(replyChannel, (replySubject, replyMessage) => {
+      try {
+      const replyData: UptimeResponse = JSON.parse(replyMessage.string());
+        responses.push(replyData);
+        
+        // Remove this module from expected responses
+        if (replyData.module) {
+          expectedResponses.delete(replyData.module);
+        }
+        
+        // If we've received responses from all expected modules, we can finish early
+        if (expectedResponses.size === 0 && !allResponsesReceived) {
+          allResponsesReceived = true;
+          sendUptimeReport();
+        }
+      } catch (error) {
+        log.error('Failed to parse uptime response', {
+          producer: 'admin',
+          error: error,
+        });
+      }
+    });
+
+    // Send stats.uptime request to all modules
+    const uptimeRequest = {
+      replyChannel: replyChannel,
+    };
+    void nats.publish('stats.uptime', JSON.stringify(uptimeRequest));
+
+    // Wait 5 seconds for modules to respond, but finish early if all expected responses received
+    const timeoutId = setTimeout(() => {
+      if (!allResponsesReceived) {
+        allResponsesReceived = true;
+        sendUptimeReport();
+      }
     }, 5000); // 5 second timeout
   } catch (error) {
     log.error('Failed to process module-uptime command', {
@@ -898,41 +1024,106 @@ export async function handleBotStatsCommand(
         return;
       }
 
+      // Get required environment variables for operator API
+      const apiToken = process.env.EEVEE_OPERATOR_API_TOKEN;
+      const apiUrl = process.env.EEVEE_OPERATOR_API_URL;
+
+      if (!apiToken || !apiUrl) {
+        log.error(
+          'Missing EEVEE_OPERATOR_API_TOKEN or EEVEE_OPERATOR_API_URL environment variables',
+          {
+            producer: 'admin',
+          }
+        );
+
+        // Send error message back to user
+        const errorMessage = {
+          platform: data.platform,
+          instance: data.instance,
+          channel: data.channel,
+          user: data.user,
+          text: 'Error: Missing operator API configuration',
+          trace: data.trace,
+        };
+
+        const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+        void nats.publish(errorTopic, JSON.stringify(errorMessage));
+        return;
+      }
+
+      // Fetch bot modules from operator API
+      let modulesResponse;
+      try {
+        const response = await fetch(`${apiUrl}/api/bot-modules`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Operator API returned status ${response.status}`);
+        }
+
+        modulesResponse = await response.json();
+      } catch (fetchError) {
+        log.error('Failed to fetch bot modules from operator API', {
+          producer: 'admin',
+          error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        });
+
+        // Send error message back to user
+        const errorMessage = {
+          platform: data.platform,
+          instance: data.instance,
+          channel: data.channel,
+          user: data.user,
+          text: 'Error: Failed to fetch bot modules from operator',
+          trace: data.trace,
+        };
+
+        const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+        void nats.publish(errorTopic, JSON.stringify(errorMessage));
+        return;
+      }
+
+      // Extract module names from the response
+      const moduleNames: string[] = Array.isArray(modulesResponse) 
+        ? (modulesResponse as BotModule[]).map((module) => module.name).filter(Boolean)
+        : [];
+
+      if (moduleNames.length === 0) {
+        // Send message back to user that no modules were found
+        const responseMessage = {
+          platform: data.platform,
+          instance: data.instance,
+          channel: data.channel,
+          user: data.user,
+          text: 'No bot modules found in the system.',
+          trace: data.trace,
+        };
+
+        const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+        void nats.publish(responseTopic, JSON.stringify(responseMessage));
+        return;
+      }
+
       // Generate a unique reply channel for this request
       const replyChannel = `stats.emit.response.${crypto.randomUUID()}`;
 
-      // Store responses we receive
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const responses: any[] = [];
+    // Store responses we receive
+    const responses: StatsResponse[] = [];
+      const expectedResponses = new Set(moduleNames);
+      let allResponsesReceived = false;
 
-      // Subscribe to the reply channel to collect responses
-      void nats
-        .subscribe(replyChannel, (replySubject, replyMessage) => {
-          try {
-            const replyData = JSON.parse(replyMessage.string());
-            responses.push(replyData);
-          } catch (error) {
-            log.error('Failed to parse stats response', {
-              producer: 'admin',
-              error: error,
-            });
-          }
-        })
-        .then((sub) => {
-          if (sub && typeof sub === 'string') {
-            // We'll let the subscription naturally expire
-            // In a production system, we might want to track and clean these up
-          }
-        });
+      // Function to send the stats report
+      const sendStatsReport = () => {
+        // Clear the timeout if it's still active
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
 
-      // Send stats.emit.request to all modules
-      const statsRequest = {
-        replyChannel: replyChannel,
-      };
-      void nats.publish('stats.emit.request', JSON.stringify(statsRequest));
-
-      // Wait 5 seconds for modules to respond
-      setTimeout(() => {
         // Format the responses as a message
         let responseText = 'Bot Statistics Report:\n';
 
@@ -962,6 +1153,7 @@ export async function handleBotStatsCommand(
 
           responseText += table.toString() + '\n';
           responseText += `Total modules: ${responses.length}\n`;
+          responseText += `Expected modules: ${moduleNames.length}\n`;
         }
 
         // Send the response back to the user/channel
@@ -984,7 +1176,46 @@ export async function handleBotStatsCommand(
           platform: data.platform,
           instance: data.instance,
           moduleCount: responses.length,
+          expectedModules: moduleNames.length,
         });
+      };
+
+      // Subscribe to the reply channel to collect responses
+      await nats.subscribe(replyChannel, (replySubject, replyMessage) => {
+        try {
+      const replyData: StatsResponse = JSON.parse(replyMessage.string());
+          responses.push(replyData);
+          
+          // Remove this module from expected responses
+          if (replyData.module) {
+            expectedResponses.delete(replyData.module);
+          }
+          
+          // If we've received responses from all expected modules, we can finish early
+          if (expectedResponses.size === 0 && !allResponsesReceived) {
+            allResponsesReceived = true;
+            sendStatsReport();
+          }
+        } catch (error) {
+          log.error('Failed to parse stats response', {
+            producer: 'admin',
+            error: error,
+          });
+        }
+      });
+
+      // Send stats.emit.request to all modules
+      const statsRequest = {
+        replyChannel: replyChannel,
+      };
+      void nats.publish('stats.emit.request', JSON.stringify(statsRequest));
+
+      // Wait 5 seconds for modules to respond, but finish early if all expected responses received
+      const timeoutId = setTimeout(() => {
+        if (!allResponsesReceived) {
+          allResponsesReceived = true;
+          sendStatsReport();
+        }
       }, 5000); // 5 second timeout
     } catch (error) {
       log.error('Failed to process bot-stats command', {
