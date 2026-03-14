@@ -401,7 +401,7 @@ export async function handleModuleUptimeCommand(
           producer: 'admin',
         }
       );
-      
+
       // Send error message back to user
       const errorMessage = {
         platform: data.platform,
@@ -436,7 +436,8 @@ export async function handleModuleUptimeCommand(
     } catch (fetchError) {
       log.error('Failed to fetch bot modules from operator API', {
         producer: 'admin',
-        error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        error:
+          fetchError instanceof Error ? fetchError.message : String(fetchError),
       });
 
       // Send error message back to user
@@ -452,12 +453,14 @@ export async function handleModuleUptimeCommand(
       const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(errorTopic, JSON.stringify(errorMessage));
       return;
-      }
+    }
 
-      // Extract module names from the response
-      const moduleNames: string[] = Array.isArray(modulesResponse) 
-        ? (modulesResponse as BotModule[]).map((module) => module.name).filter(Boolean)
-        : [];
+    // Extract module names from the response
+    const moduleNames: string[] = Array.isArray(modulesResponse)
+      ? (modulesResponse as BotModule[])
+          .map((module) => module.name)
+          .filter(Boolean)
+      : [];
 
     if (moduleNames.length === 0) {
       // Send message back to user that no modules were found
@@ -539,14 +542,14 @@ export async function handleModuleUptimeCommand(
     // Subscribe to the reply channel to collect responses
     await nats.subscribe(replyChannel, (replySubject, replyMessage) => {
       try {
-      const replyData: UptimeResponse = JSON.parse(replyMessage.string());
+        const replyData: UptimeResponse = JSON.parse(replyMessage.string());
         responses.push(replyData);
-        
+
         // Remove this module from expected responses
         if (replyData.module) {
           expectedResponses.delete(replyData.module);
         }
-        
+
         // If we've received responses from all expected modules, we can finish early
         if (expectedResponses.size === 0 && !allResponsesReceived) {
           allResponsesReceived = true;
@@ -1070,7 +1073,10 @@ export async function handleBotStatsCommand(
       } catch (fetchError) {
         log.error('Failed to fetch bot modules from operator API', {
           producer: 'admin',
-          error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+          error:
+            fetchError instanceof Error
+              ? fetchError.message
+              : String(fetchError),
         });
 
         // Send error message back to user
@@ -1089,8 +1095,10 @@ export async function handleBotStatsCommand(
       }
 
       // Extract module names from the response
-      const moduleNames: string[] = Array.isArray(modulesResponse) 
-        ? (modulesResponse as BotModule[]).map((module) => module.name).filter(Boolean)
+      const moduleNames: string[] = Array.isArray(modulesResponse)
+        ? (modulesResponse as BotModule[])
+            .map((module) => module.name)
+            .filter(Boolean)
         : [];
 
       if (moduleNames.length === 0) {
@@ -1112,8 +1120,8 @@ export async function handleBotStatsCommand(
       // Generate a unique reply channel for this request
       const replyChannel = `stats.emit.response.${crypto.randomUUID()}`;
 
-    // Store responses we receive
-    const responses: StatsResponse[] = [];
+      // Store responses we receive
+      const responses: StatsResponse[] = [];
       const expectedResponses = new Set(moduleNames);
       let allResponsesReceived = false;
 
@@ -1124,53 +1132,103 @@ export async function handleBotStatsCommand(
           clearTimeout(timeoutId);
         }
 
-// Format the responses as a message
-      let responseText = 'Bot Statistics Report:\n';
+        // Format the responses as a message
+        let responseText = 'Bot Statistics Report:\n';
 
-      if (responses.length === 0) {
-        responseText += 'No modules responded within the timeout period.\n';
-      } else {
-        // Sort responses by module name
-        responses.sort((a, b) => a.module.localeCompare(b.module));
+        if (responses.length === 0) {
+          responseText += 'No modules responded within the timeout period.\n';
+        } else {
+          // Sort responses by module name
+          responses.sort((a, b) => a.module.localeCompare(b.module));
 
-        // Process each module's stats
-        for (const response of responses) {
-          responseText += `\n=== ${response.module} ===\n`;
-          
-          if (response.stats) {
-            // Handle prometheus metrics specially if they exist
-            if (response.stats.prometheus_metrics) {
-              // Add uptime info first
+          // Create a concise table with key highlights
+          const table = new AsciiTable();
+          table.setHeading('Module', 'Status', 'Uptime', 'Key Metrics');
+
+          // Process each module's stats for the table
+          for (const response of responses) {
+            let status = 'OK';
+            let uptime = 'N/A';
+            let keyMetrics = 'N/A';
+
+            if (response.stats) {
+              // Extract uptime info
               if (response.stats.uptime_seconds !== undefined) {
-                responseText += `Uptime: ${response.stats.uptime_formatted || 'N/A'} (${response.stats.uptime_seconds}s)\n`;
+                uptime = response.stats.uptime_formatted
+                  ? String(response.stats.uptime_formatted)
+                  : `${response.stats.uptime_seconds}s`;
+              } else if (response.stats.uptime_formatted) {
+                uptime = String(response.stats.uptime_formatted);
               }
-              
-              // Add a note about prometheus metrics being available
-              responseText += 'Prometheus metrics collected (see below)\n';
-            } else {
-              // Display regular stats in key-value format
-              for (const [key, value] of Object.entries(response.stats)) {
-                responseText += `${key}: ${value}\n`;
-              }
-            }
-          } else {
-            responseText += 'No stats available\n';
-          }
-        }
-        
-        // Add prometheus metrics section at the end if any module has them
-        const modulesWithPrometheus = responses.filter(r => r.stats?.prometheus_metrics);
-        if (modulesWithPrometheus.length > 0) {
-          responseText += '\n--- Prometheus Metrics ---\n';
-          for (const response of modulesWithPrometheus) {
-            responseText += `\n${response.module}:\n`;
-            responseText += response.stats?.prometheus_metrics || 'No metrics available';
-          }
-        }
 
-        responseText += `\n\nTotal modules: ${responses.length}\n`;
-        responseText += `Expected modules: ${moduleNames.length}\n`;
-      }
+              // Extract key metrics based on what's available
+              const metrics: string[] = [];
+
+              // Memory usage if available
+              if (response.stats.memory_rss_mb !== undefined) {
+                metrics.push(
+                  `Memory: ${String(response.stats.memory_rss_mb)}MB`
+                );
+              } else if (response.stats.memory_heap_used_mb !== undefined) {
+                metrics.push(
+                  `Heap: ${String(response.stats.memory_heap_used_mb)}MB`
+                );
+              }
+
+              // CPU usage if available
+              if (response.stats.cpu_usage_percent !== undefined) {
+                metrics.push(
+                  `CPU: ${String(response.stats.cpu_usage_percent)}%`
+                );
+              }
+
+              // Message counts if available
+              if (response.stats.messages_processed_count !== undefined) {
+                metrics.push(
+                  `Msgs: ${String(response.stats.messages_processed_count)}`
+                );
+              } else if (
+                response.stats.commands_processed_count !== undefined
+              ) {
+                metrics.push(
+                  `Cmds: ${String(response.stats.commands_processed_count)}`
+                );
+              }
+
+              // Connection counts if available
+              if (response.stats.connections_active !== undefined) {
+                metrics.push(
+                  `Conns: ${String(response.stats.connections_active)}`
+                );
+              }
+
+              // Error counts if available
+              if (response.stats.errors_total !== undefined) {
+                metrics.push(`Errors: ${String(response.stats.errors_total)}`);
+              }
+
+              keyMetrics =
+                metrics.length > 0 ? metrics.join(', ') : 'No key metrics';
+            } else {
+              status = 'No Stats';
+            }
+
+            table.addRow(response.module, status, uptime, keyMetrics);
+          }
+
+          responseText += table.toString() + '\n';
+
+          // Add summary
+          responseText += `\nSummary: ${responses.length}/${moduleNames.length} modules responded\n`;
+
+          // Add note about detailed metrics if any module has prometheus data
+          const modulesWithPrometheus = responses.filter(
+            (r) => r.stats?.prometheus_metrics
+          );
+          if (modulesWithPrometheus.length > 0) {
+            responseText += `Note: ${modulesWithPrometheus.length} module(s) have detailed Prometheus metrics available\n`;
+          }
+        }
 
         // Send the response back to the user/channel
         const responseMessage = {
@@ -1199,14 +1257,14 @@ export async function handleBotStatsCommand(
       // Subscribe to the reply channel to collect responses
       await nats.subscribe(replyChannel, (replySubject, replyMessage) => {
         try {
-      const replyData: StatsResponse = JSON.parse(replyMessage.string());
+          const replyData: StatsResponse = JSON.parse(replyMessage.string());
           responses.push(replyData);
-          
+
           // Remove this module from expected responses
           if (replyData.module) {
             expectedResponses.delete(replyData.module);
           }
-          
+
           // If we've received responses from all expected modules, we can finish early
           if (expectedResponses.size === 0 && !allResponsesReceived) {
             allResponsesReceived = true;
