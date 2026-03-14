@@ -274,7 +274,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin join ',
+      regex: 'admin join',
       platformPrefixAllowed: true,
       ratelimit: joinRateLimit,
     },
@@ -287,7 +287,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin part ',
+      regex: 'admin part',
       platformPrefixAllowed: true,
       ratelimit: partRateLimit,
     },
@@ -339,7 +339,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin module-restart ',
+      regex: 'admin module-restart',
       platformPrefixAllowed: true,
       ratelimit: moduleRestartRateLimit,
     },
@@ -1113,7 +1113,7 @@ const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
   `control.registerCommands.${adminShowRatelimitsCommandDisplayName}`,
   () => {
     log.info(
-      `Received control.registerCommands.${adminShowRatelimitsCommandDisplayName} control message`,
+      `Received control.registerCommands.${adminJoinCommandDisplayName} control message`,
       {
         producer: 'admin',
       }
