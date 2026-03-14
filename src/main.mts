@@ -591,7 +591,9 @@ const routerResponseSub = nats.subscribe(
             interval: string;
             commandName?: string;
           };
-          const [commandUUID, identifier] = key.split(':');
+          const parts = key.split(':');
+          const commandUUID = parts[0];
+          const identifier = parts.slice(1).join(':');
           // Use command name if available, otherwise fallback to UUID
           const commandName = typedStat.commandName || commandUUID;
           const displayName =
