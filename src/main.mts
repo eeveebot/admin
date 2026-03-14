@@ -25,7 +25,7 @@ const adminShowCommandRegistryCommandUUID: string =
 const adminModuleUptimeCommandUUID: string =
   'f8e8a7b2-4c1d-4e5f-9a2b-3c4d5e6f7890';
 const adminModuleRestartCommandUUID: string =
-  '13576a4e-f6a5-4659-99d0-4cab09a9158c';
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
 const adminJoinCommandDisplayName: string = 'admin-join';
 const adminPartCommandDisplayName: string = 'admin-part';
@@ -274,7 +274,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-       regex: '^admin\\s+join\\s+', // Match admin join command at start of line
+      regex: '^admin\\s+join\\s+', // Match admin join command at start of line
       platformPrefixAllowed: true,
       ratelimit: joinRateLimit,
     },
@@ -287,7 +287,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-       regex: '^admin\\s+part\\s+', // Match admin part command at start of line
+      regex: '^admin\\s+part\\s+', // Match admin part command at start of line
       platformPrefixAllowed: true,
       ratelimit: partRateLimit,
     },
@@ -300,7 +300,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-       regex: '^admin\\s+show-ratelimits\\s*', // Match admin show-ratelimits command at start of line
+      regex: '^admin\\s+show-ratelimits\\s*', // Match admin show-ratelimits command at start of line
       platformPrefixAllowed: true,
       ratelimit: showRatelimitsRateLimit,
     },
@@ -313,7 +313,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-       regex: '^admin\\s+show-command-registry\\s*', // Match admin show-command-registry command at start of line
+      regex: '^admin\\s+show-command-registry\\s*', // Match admin show-command-registry command at start of line
       platformPrefixAllowed: true,
       ratelimit: showCommandRegistryRateLimit,
     },
@@ -326,7 +326,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-       regex: '^admin\\s+module-uptime\\s*', // Match admin module-uptime command at start of line
+      regex: '^admin\\s+module-uptime\\s*', // Match admin module-uptime command at start of line
       platformPrefixAllowed: true,
       ratelimit: moduleUptimeRateLimit,
     },
@@ -339,7 +339,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-       regex: '^admin\\s+module-restart\\s*', // Match admin module-restart command at start of line
+      regex: '^admin\\s+module-restart\\s*', // Match admin module-restart command at start of line
       platformPrefixAllowed: true,
       ratelimit: moduleRestartRateLimit,
     },
