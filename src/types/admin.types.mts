@@ -33,6 +33,7 @@ export interface AdminRootConfig {
     join?: RateLimitConfig;
     part?: RateLimitConfig;
     showRatelimits?: RateLimitConfig;
+    showCommandRegistry?: RateLimitConfig;
     moduleUptime?: RateLimitConfig;
     moduleRestart?: RateLimitConfig;
   };

@@ -20,6 +20,8 @@ const adminJoinCommandUUID: string = '20a6f27e-bd12-4c5c-931e-cb4a232b2ce5';
 const adminPartCommandUUID: string = '8d5c0a13-1336-4882-aa41-00a068b2aa00';
 const adminShowRatelimitsCommandUUID: string =
   '2bbfdf48-4cab-4200-b8a6-521036ffa87e';
+const adminShowCommandRegistryCommandUUID: string =
+  'd7f3b4e2-8c1a-4d5f-9a2b-3c4d5e6f7g8h';
 const adminModuleUptimeCommandUUID: string =
   'f8e8a7b2-4c1d-4e5f-9a2b-3c4d5e6f7g8h';
 const adminModuleRestartCommandUUID: string =
@@ -28,6 +30,7 @@ const adminModuleRestartCommandUUID: string =
 const adminJoinCommandDisplayName: string = 'admin-join';
 const adminPartCommandDisplayName: string = 'admin-part';
 const adminShowRatelimitsCommandDisplayName: string = 'admin-show-ratelimits';
+const adminShowCommandRegistryCommandDisplayName: string = 'admin-show-command-registry';
 const adminModuleUptimeCommandDisplayName: string = 'admin-module-uptime';
 const adminModuleRestartCommandDisplayName: string = 'admin-module-restart';
 
@@ -88,6 +91,11 @@ const adminHelp = [
   {
     command: 'admin show-ratelimits',
     descr: 'Show current rate limit statistics',
+    params: [],
+  },
+  {
+    command: 'admin show-command-registry',
+    descr: 'Show current command registry',
     params: [],
   },
   {
@@ -224,6 +232,12 @@ async function registerAdminCommands(): Promise<void> {
       limit: 3,
       interval: '1m',
     },
+    showCommandRegistry: {
+      mode: 'drop',
+      level: 'user',
+      limit: 3,
+      interval: '1m',
+    },
     moduleUptime: {
       mode: 'drop',
       level: 'user',
@@ -243,6 +257,8 @@ async function registerAdminCommands(): Promise<void> {
   const partRateLimit = adminConfig.ratelimits?.part || defaultRateLimits.part;
   const showRatelimitsRateLimit =
     adminConfig.ratelimits?.showRatelimits || defaultRateLimits.showRatelimits;
+  const showCommandRegistryRateLimit =
+    adminConfig.ratelimits?.showCommandRegistry || defaultRateLimits.showCommandRegistry;
   const moduleUptimeRateLimit =
     adminConfig.ratelimits?.moduleUptime || defaultRateLimits.moduleUptime;
   const moduleRestartRateLimit =
@@ -287,6 +303,19 @@ async function registerAdminCommands(): Promise<void> {
       regex: 'admin show-ratelimits',
       platformPrefixAllowed: true,
       ratelimit: showRatelimitsRateLimit,
+    },
+    {
+      type: 'command.register',
+      commandUUID: adminShowCommandRegistryCommandUUID,
+      commandDisplayName: adminShowCommandRegistryCommandDisplayName,
+      platform: '.*',
+      network: '.*',
+      instance: '.*',
+      channel: '.*',
+      user: '.*',
+      regex: 'admin show-command-registry',
+      platformPrefixAllowed: true,
+      ratelimit: showCommandRegistryRateLimit,
     },
     {
       type: 'command.register',
@@ -573,6 +602,63 @@ const showRatelimitsCommandSub = nats.subscribe(
   }
 );
 natsSubscriptions.push(showRatelimitsCommandSub);
+
+// Subscribe to show-command-registry command execution messages
+const showCommandRegistryCommandSub = nats.subscribe(
+  `command.execute.${adminShowCommandRegistryCommandUUID}`,
+  (subject, message) => {
+    try {
+      const data = JSON.parse(message.string());
+      log.info('Received command.execute for show-command-registry', {
+        producer: 'admin',
+        platform: data.platform,
+        instance: data.instance,
+        channel: data.channel,
+        user: data.user,
+        originalText: data.originalText,
+      });
+
+      // Check if user is authenticated admin
+      if (!isAuthenticatedAdmin(data.platform, data.user, data.userHost)) {
+        log.warn('Unauthorized show-command-registry command attempt', {
+          producer: 'admin',
+          platform: data.platform,
+          user: data.user,
+          userHost: data.userHost,
+          channel: data.channel,
+        });
+        return;
+      }
+
+      // Send a message to the router to gather command registry information
+      const requestMessage = {
+        action: 'get-command-registry',
+        requester: {
+          platform: data.platform,
+          instance: data.instance,
+          channel: data.channel,
+          user: data.user,
+        },
+        trace: data.trace,
+      };
+
+      // Publish request to router
+      void nats.publish('admin.request.router', JSON.stringify(requestMessage));
+
+      log.info('Requested command registry from router', {
+        producer: 'admin',
+        trace: data.trace,
+      });
+    } catch (error) {
+      log.error('Failed to process show-command-registry command', {
+        producer: 'admin',
+        message: message.string(),
+        error: error,
+      });
+    }
+  }
+);
+natsSubscriptions.push(showCommandRegistryCommandSub);
 
 // Subscribe to module-uptime command execution messages
 const moduleUptimeCommandSub = nats.subscribe(
@@ -917,6 +1003,83 @@ const routerResponseSub = nats.subscribe(
 );
 natsSubscriptions.push(routerResponseSub);
 
+// Subscribe to router responses with command registry information
+const routerCommandRegistryResponseSub = nats.subscribe(
+  'admin.response.router.command-registry',
+  (subject, message) => {
+    try {
+      const data = JSON.parse(message.string());
+      log.info('Received command registry from router', {
+        producer: 'admin',
+        trace: data.trace,
+      });
+
+      // Format the command registry as an ASCII table
+      let responseText = 'Command Registry:\n';
+
+      if (!data.registry || data.registry.length === 0) {
+        responseText += 'No commands registered.\n';
+      } else {
+        // Create ASCII table using ascii-table
+        const table = new AsciiTable();
+        table.setHeading(
+          'Command Name',
+          'UUID',
+          'Platform',
+          'Network',
+          'Instance',
+          'Channel',
+          'User'
+        );
+
+        // Add each command entry
+        for (const command of data.registry) {
+          table.addRow(
+            command.commandDisplayName || command.commandUUID,
+            command.commandUUID,
+            command.platformRegex.source,
+            command.networkRegex.source,
+            command.instanceRegex.source,
+            command.channelRegex.source,
+            command.userRegex.source
+          );
+        }
+
+        responseText += table.toString() + '\n';
+        responseText += `Total commands: ${data.registry.length}\n`;
+      }
+
+      // Send the response back to the user/channel
+      const responseMessage = {
+        platform: data.requester.platform,
+        instance: data.requester.instance,
+        channel: data.requester.channel,
+        user: data.requester.user,
+        text: responseText,
+        trace: data.trace,
+      };
+
+      const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
+      void nats.publish(responseTopic, JSON.stringify(responseMessage));
+
+      log.info('Sent command registry to user', {
+        producer: 'admin',
+        user: data.requester.user,
+        channel: data.requester.channel,
+        platform: data.requester.platform,
+        instance: data.requester.instance,
+      });
+    } catch (error) {
+      log.error('Failed to process router command registry response', {
+        producer: 'admin',
+        message: message.string(),
+        error: error,
+      });
+    }
+  }
+);
+natsSubscriptions.push(routerCommandRegistryResponseSub);
+
 // Subscribe to control messages for re-registering commands
 const controlSubRegisterCommandAdminJoin = nats.subscribe(
   `control.registerCommands.${adminJoinCommandDisplayName}`,
@@ -951,6 +1114,20 @@ const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
   () => {
     log.info(
       `Received control.registerCommands.${adminShowRatelimitsCommandDisplayName} control message`,
+      {
+        producer: 'admin',
+      }
+    );
+    void registerAdminCommands();
+  }
+);
+
+// Subscribe to control messages for re-registering show-command-registry command
+const controlSubRegisterCommandAdminShowCommandRegistry = nats.subscribe(
+  `control.registerCommands.${adminShowCommandRegistryCommandDisplayName}`,
+  () => {
+    log.info(
+      `Received control.registerCommands.${adminShowCommandRegistryCommandDisplayName} control message`,
       {
         producer: 'admin',
       }
@@ -1030,6 +1207,7 @@ natsSubscriptions.push(
   controlSubRegisterCommandAdminJoin,
   controlSubRegisterCommandAdminPart,
   controlSubRegisterCommandAdminShowRatelimits,
+  controlSubRegisterCommandAdminShowCommandRegistry,
   controlSubRegisterCommandAdminModuleUptime,
   controlSubRegisterCommandAdminModuleRestart,
   controlSubRegisterCommandAll,
