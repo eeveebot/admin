@@ -237,6 +237,38 @@ async function registerAdminCommands(): Promise<void> {
     },
   ];
 
+  // Function to publish help information
+  async function publishHelp(): Promise<void> {
+    const helpUpdate = {
+      from: 'admin',
+      help: adminHelp,
+    };
+
+    try {
+      await nats.publish('help.update', JSON.stringify(helpUpdate));
+      log.info('Published admin help information', {
+        producer: 'admin',
+      });
+    } catch (error) {
+      log.error('Failed to publish admin help information', {
+        producer: 'admin',
+        error: error,
+      });
+    }
+  }
+
+  // Publish help information at startup
+  await publishHelp();
+
+  // Subscribe to help update requests
+  const helpUpdateRequestSub = nats.subscribe('help.updateRequest', () => {
+    log.info('Received help.updateRequest message', {
+      producer: 'admin',
+    });
+    void publishHelp();
+  });
+  natsSubscriptions.push(helpUpdateRequestSub);
+
   for (const command of commands) {
     try {
       await nats.publish('command.register', JSON.stringify(command));
@@ -930,3 +962,80 @@ natsSubscriptions.push(
   controlSubRegisterCommandAll,
   statsUptimeSub
 );
+
+// Help information for admin commands
+const adminHelp = [
+  {
+    command: 'admin join',
+    descr: 'Join a channel on a specific platform/network/instance',
+    params: [
+      {
+        param: 'platform',
+        required: true,
+        descr: 'Platform to join (e.g., discord, slack, irc)',
+      },
+      {
+        param: 'network',
+        required: true,
+        descr: 'Network name',
+      },
+      {
+        param: 'instance',
+        required: true,
+        descr: 'Instance identifier',
+      },
+      {
+        param: 'channel',
+        required: true,
+        descr: 'Channel name to join',
+      },
+    ],
+  },
+  {
+    command: 'admin part',
+    descr: 'Leave a channel on a specific platform/network/instance',
+    params: [
+      {
+        param: 'platform',
+        required: true,
+        descr: 'Platform to leave (e.g., discord, slack, irc)',
+      },
+      {
+        param: 'network',
+        required: true,
+        descr: 'Network name',
+      },
+      {
+        param: 'instance',
+        required: true,
+        descr: 'Instance identifier',
+      },
+      {
+        param: 'channel',
+        required: true,
+        descr: 'Channel name to leave',
+      },
+    ],
+  },
+  {
+    command: 'admin show-ratelimits',
+    descr: 'Show current rate limit statistics',
+    params: [],
+  },
+  {
+    command: 'admin module-uptime',
+    descr: 'Show uptime information for all modules',
+    params: [],
+  },
+  {
+    command: 'admin module-restart',
+    descr: 'Restart a specific module',
+    params: [
+      {
+        param: 'module',
+        required: true,
+        descr: 'Name of the module to restart',
+      },
+    ],
+  },
+];
