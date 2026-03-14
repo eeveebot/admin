@@ -777,7 +777,7 @@ const routerResponseSub = nats.subscribe(
         }
 
         responseText +=
-          '+------------------------+----------------------------+--------+----------+----------+\n';
+          '+------------------------+------------------------------+--------+----------+----------+\n';
         responseText += `Total entries: ${Object.keys(data.stats).length}\n`;
       }
 
