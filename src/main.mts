@@ -1014,39 +1014,46 @@ const routerCommandRegistryResponseSub = nats.subscribe(
         trace: data.trace,
       });
 
-      // Format the command registry as an ASCII table
-      let responseText = 'Command Registry:\n';
+      let responseText = '';
 
-      if (!data.registry || data.registry.length === 0) {
-        responseText += 'No commands registered.\n';
+      // Check if this is an error response
+      if (data.action === 'command-registry-error') {
+        responseText = `Error retrieving command registry: ${data.error}\n`;
       } else {
-        // Create ASCII table using ascii-table
-        const table = new AsciiTable();
-        table.setHeading(
-          'Command Name',
-          'UUID',
-          'Platform',
-          'Network',
-          'Instance',
-          'Channel',
-          'User'
-        );
+        // Format the command registry as an ASCII table
+        responseText = 'Command Registry:\n';
 
-        // Add each command entry
-        for (const command of data.registry) {
-          table.addRow(
-            command.commandDisplayName || command.commandUUID,
-            command.commandUUID,
-            command.platformRegex.source,
-            command.networkRegex.source,
-            command.instanceRegex.source,
-            command.channelRegex.source,
-            command.userRegex.source
+        if (!data.registry || data.registry.length === 0) {
+          responseText += 'No commands registered.\n';
+        } else {
+          // Create ASCII table using ascii-table
+          const table = new AsciiTable();
+          table.setHeading(
+            'Command Name',
+            'UUID',
+            'Platform',
+            'Network',
+            'Instance',
+            'Channel',
+            'User'
           );
-        }
 
-        responseText += table.toString() + '\n';
-        responseText += `Total commands: ${data.registry.length}\n`;
+          // Add each command entry
+          for (const command of data.registry) {
+            table.addRow(
+              command.commandDisplayName || command.commandUUID,
+              command.commandUUID,
+              command.platformRegex.source,
+              command.networkRegex.source,
+              command.instanceRegex.source,
+              command.channelRegex.source,
+              command.userRegex.source
+            );
+          }
+
+          responseText += table.toString() + '\n';
+          responseText += `Total commands: ${data.registry.length}\n`;
+        }
       }
 
       // Send the response back to the user/channel
@@ -1073,8 +1080,32 @@ const routerCommandRegistryResponseSub = nats.subscribe(
       log.error('Failed to process router command registry response', {
         producer: 'admin',
         message: message.string(),
-        error: error,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
+      
+      // Try to send an error message back to the user
+      try {
+        const data = JSON.parse(message.string());
+        if (data.requester) {
+          const errorMessage = {
+            platform: data.requester.platform,
+            instance: data.requester.instance,
+            channel: data.requester.channel,
+            user: data.requester.user,
+            text: 'Error: Failed to process command registry response',
+            trace: data.trace,
+          };
+
+          const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
+          void nats.publish(responseTopic, JSON.stringify(errorMessage));
+        }
+      } catch (sendError) {
+        log.error('Failed to send error message to user', {
+          producer: 'admin',
+          error: sendError instanceof Error ? sendError.message : String(sendError),
+        });
+      }
     }
   }
 );
