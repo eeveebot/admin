@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from './auth.mjs';
+import { parsePrometheusMetrics } from './utils.mjs';
 
 // Interfaces for type safety
 interface UptimeResponse {
@@ -1152,59 +1153,101 @@ export async function handleBotStatsCommand(
             let keyMetrics = 'N/A';
 
             if (response.stats) {
+              // Parse Prometheus metrics if available
+              let parsedStats = response.stats;
+              if (response.stats.prometheus_metrics) {
+                // Merge parsed Prometheus metrics with existing stats
+                parsedStats = {
+                  ...response.stats,
+                  ...parsePrometheusMetrics(response.stats.prometheus_metrics as string)
+                };
+              }
+              
               // Extract uptime info
-              if (response.stats.uptime_seconds !== undefined) {
-                uptime = response.stats.uptime_formatted
-                  ? String(response.stats.uptime_formatted)
-                  : `${response.stats.uptime_seconds}s`;
-              } else if (response.stats.uptime_formatted) {
-                uptime = String(response.stats.uptime_formatted);
+              if (parsedStats.uptime_seconds !== undefined) {
+                uptime = parsedStats.uptime_formatted
+                  ? String(parsedStats.uptime_formatted)
+                  : `${parsedStats.uptime_seconds}s`;
+              } else if (parsedStats.uptime_formatted) {
+                uptime = String(parsedStats.uptime_formatted);
               }
 
               // Extract key metrics based on what's available
               const metrics: string[] = [];
 
               // Memory usage if available
-              if (response.stats.memory_rss_mb !== undefined) {
+              if (parsedStats.memory_rss_mb !== undefined) {
                 metrics.push(
-                  `Memory: ${String(response.stats.memory_rss_mb)}MB`
+                  `Memory: ${String(parsedStats.memory_rss_mb)}MB`
                 );
-              } else if (response.stats.memory_heap_used_mb !== undefined) {
+              } else if (parsedStats.memory_heap_used_mb !== undefined) {
                 metrics.push(
-                  `Heap: ${String(response.stats.memory_heap_used_mb)}MB`
-                );
-              }
-
-              // CPU usage if available
-              if (response.stats.cpu_usage_percent !== undefined) {
-                metrics.push(
-                  `CPU: ${String(response.stats.cpu_usage_percent)}%`
+                  `Heap: ${String(parsedStats.memory_heap_used_mb)}MB`
                 );
               }
 
               // Message counts if available
-              if (response.stats.messages_processed_count !== undefined) {
+              if (parsedStats.messages_processed_count !== undefined) {
                 metrics.push(
-                  `Msgs: ${String(response.stats.messages_processed_count)}`
+                  `Msgs: ${String(parsedStats.messages_processed_count)}`
                 );
               } else if (
-                response.stats.commands_processed_count !== undefined
+                parsedStats.commands_processed_count !== undefined
               ) {
                 metrics.push(
-                  `Cmds: ${String(response.stats.commands_processed_count)}`
+                  `Cmds: ${String(parsedStats.commands_processed_count)}`
                 );
               }
 
-              // Connection counts if available
-              if (response.stats.connections_active !== undefined) {
+              // Broadcast counts if available
+              if (parsedStats.broadcasts_processed_count !== undefined) {
                 metrics.push(
-                  `Conns: ${String(response.stats.connections_active)}`
+                  `Broadcasts: ${String(parsedStats.broadcasts_processed_count)}`
                 );
               }
 
               // Error counts if available
-              if (response.stats.errors_total !== undefined) {
-                metrics.push(`Errors: ${String(response.stats.errors_total)}`);
+              if (parsedStats.errors_total !== undefined) {
+                metrics.push(`Errors: ${String(parsedStats.errors_total)}`);
+              }
+
+              keyMetrics =
+                metrics.length > 0 ? metrics.join(', ') : 'No key metrics';
+
+              // Memory usage if available
+              if (parsedStats.memory_rss_mb !== undefined) {
+                metrics.push(
+                  `Memory: ${String(parsedStats.memory_rss_mb)}MB`
+                );
+              } else if (parsedStats.memory_heap_used_mb !== undefined) {
+                metrics.push(
+                  `Heap: ${String(parsedStats.memory_heap_used_mb)}MB`
+                );
+              }
+
+              // Message counts if available
+              if (parsedStats.messages_processed_count !== undefined) {
+                metrics.push(
+                  `Msgs: ${String(parsedStats.messages_processed_count)}`
+                );
+              } else if (
+                parsedStats.commands_processed_count !== undefined
+              ) {
+                metrics.push(
+                  `Cmds: ${String(parsedStats.commands_processed_count)}`
+                );
+              }
+
+              // Broadcast counts if available
+              if (parsedStats.broadcasts_processed_count !== undefined) {
+                metrics.push(
+                  `Broadcasts: ${String(parsedStats.broadcasts_processed_count)}`
+                );
+              }
+
+              // Error counts if available
+              if (parsedStats.errors_total !== undefined) {
+                metrics.push(`Errors: ${String(parsedStats.errors_total)}`);
               }
 
               keyMetrics =
@@ -1220,14 +1263,6 @@ export async function handleBotStatsCommand(
 
           // Add summary
           responseText += `\nSummary: ${responses.length}/${moduleNames.length} modules responded\n`;
-
-          // Add note about detailed metrics if any module has prometheus data
-          const modulesWithPrometheus = responses.filter(
-            (r) => r.stats?.prometheus_metrics
-          );
-          if (modulesWithPrometheus.length > 0) {
-            responseText += `Note: ${modulesWithPrometheus.length} module(s) have detailed Prometheus metrics available\n`;
-          }
         }
 
         // Send the response back to the user/channel
