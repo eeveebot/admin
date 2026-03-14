@@ -274,7 +274,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin join',
+       regex: '^admin\\s+join\\s+', // Match admin join command at start of line
       platformPrefixAllowed: true,
       ratelimit: joinRateLimit,
     },
@@ -287,7 +287,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin part',
+       regex: '^admin\\s+part\\s+', // Match admin part command at start of line
       platformPrefixAllowed: true,
       ratelimit: partRateLimit,
     },
@@ -300,7 +300,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin show-ratelimits',
+       regex: '^admin\\s+show-ratelimits\\s*', // Match admin show-ratelimits command at start of line
       platformPrefixAllowed: true,
       ratelimit: showRatelimitsRateLimit,
     },
@@ -313,7 +313,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin show-command-registry',
+       regex: '^admin\\s+show-command-registry\\s*', // Match admin show-command-registry command at start of line
       platformPrefixAllowed: true,
       ratelimit: showCommandRegistryRateLimit,
     },
@@ -326,7 +326,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin module-uptime',
+       regex: '^admin\\s+module-uptime\\s*', // Match admin module-uptime command at start of line
       platformPrefixAllowed: true,
       ratelimit: moduleUptimeRateLimit,
     },
@@ -339,7 +339,7 @@ async function registerAdminCommands(): Promise<void> {
       instance: '.*',
       channel: '.*',
       user: '.*',
-      regex: 'admin module-restart',
+       regex: '^admin\\s+module-restart\\s*', // Match admin module-restart command at start of line
       platformPrefixAllowed: true,
       ratelimit: moduleRestartRateLimit,
     },
