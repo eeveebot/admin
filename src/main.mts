@@ -29,6 +29,83 @@ const adminShowRatelimitsCommandDisplayName: string = 'admin-show-ratelimits';
 const adminModuleUptimeCommandDisplayName: string = 'admin-module-uptime';
 const adminModuleRestartCommandDisplayName: string = 'admin-module-restart';
 
+// Help information for admin commands
+const adminHelp = [
+  {
+    command: 'admin join',
+    descr: 'Join a channel on a specific platform/network/instance',
+    params: [
+      {
+        param: 'platform',
+        required: true,
+        descr: 'Platform to join (e.g., discord, slack, irc)',
+      },
+      {
+        param: 'network',
+        required: true,
+        descr: 'Network name',
+      },
+      {
+        param: 'instance',
+        required: true,
+        descr: 'Instance identifier',
+      },
+      {
+        param: 'channel',
+        required: true,
+        descr: 'Channel name to join',
+      },
+    ],
+  },
+  {
+    command: 'admin part',
+    descr: 'Leave a channel on a specific platform/network/instance',
+    params: [
+      {
+        param: 'platform',
+        required: true,
+        descr: 'Platform to leave (e.g., discord, slack, irc)',
+      },
+      {
+        param: 'network',
+        required: true,
+        descr: 'Network name',
+      },
+      {
+        param: 'instance',
+        required: true,
+        descr: 'Instance identifier',
+      },
+      {
+        param: 'channel',
+        required: true,
+        descr: 'Channel name to leave',
+      },
+    ],
+  },
+  {
+    command: 'admin show-ratelimits',
+    descr: 'Show current rate limit statistics',
+    params: [],
+  },
+  {
+    command: 'admin module-uptime',
+    descr: 'Show uptime information for all modules',
+    params: [],
+  },
+  {
+    command: 'admin module-restart',
+    descr: 'Restart a specific module',
+    params: [
+      {
+        param: 'module',
+        required: true,
+        descr: 'Name of the module to restart',
+      },
+    ],
+  },
+];
+
 //
 // Do whatever teardown is necessary before calling common handler
 process.on('SIGINT', () => {
@@ -962,80 +1039,3 @@ natsSubscriptions.push(
   controlSubRegisterCommandAll,
   statsUptimeSub
 );
-
-// Help information for admin commands
-const adminHelp = [
-  {
-    command: 'admin join',
-    descr: 'Join a channel on a specific platform/network/instance',
-    params: [
-      {
-        param: 'platform',
-        required: true,
-        descr: 'Platform to join (e.g., discord, slack, irc)',
-      },
-      {
-        param: 'network',
-        required: true,
-        descr: 'Network name',
-      },
-      {
-        param: 'instance',
-        required: true,
-        descr: 'Instance identifier',
-      },
-      {
-        param: 'channel',
-        required: true,
-        descr: 'Channel name to join',
-      },
-    ],
-  },
-  {
-    command: 'admin part',
-    descr: 'Leave a channel on a specific platform/network/instance',
-    params: [
-      {
-        param: 'platform',
-        required: true,
-        descr: 'Platform to leave (e.g., discord, slack, irc)',
-      },
-      {
-        param: 'network',
-        required: true,
-        descr: 'Network name',
-      },
-      {
-        param: 'instance',
-        required: true,
-        descr: 'Instance identifier',
-      },
-      {
-        param: 'channel',
-        required: true,
-        descr: 'Channel name to leave',
-      },
-    ],
-  },
-  {
-    command: 'admin show-ratelimits',
-    descr: 'Show current rate limit statistics',
-    params: [],
-  },
-  {
-    command: 'admin module-uptime',
-    descr: 'Show uptime information for all modules',
-    params: [],
-  },
-  {
-    command: 'admin module-restart',
-    descr: 'Restart a specific module',
-    params: [
-      {
-        param: 'module',
-        required: true,
-        descr: 'Name of the module to restart',
-      },
-    ],
-  },
-];
