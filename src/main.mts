@@ -76,8 +76,8 @@ function isAuthenticatedAdmin(platform: string, user: string, userHost: string):
     return false;
   }
 
-  // Create full hostmask in the format nick!user@host
-  const fullHostmask = `${user}!${userHost}`;
+  // Create full hostmask in the format user@host
+  const fullHostmask = `${user}@${userHost}`;
 
   // Check if the user matches any admin's hostmask
   return adminConfig.admins.some(admin => {

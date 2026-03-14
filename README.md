@@ -28,7 +28,7 @@ admins:
     - 'irc'
   authentication:
     irc:
-      hostmask: 'nick!user@host.mask'
+      hostmask: 'user@host.mask'
 ```
 
 ### Configuration Fields
