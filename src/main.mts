@@ -12,7 +12,8 @@ const natsSubscriptions: Array<Promise<string | boolean>> = [];
 
 const adminJoinCommandUUID: string = '20a6f27e-bd12-4c5c-931e-cb4a232b2ce5';
 const adminPartCommandUUID: string = '8d5c0a13-1336-4882-aa41-00a068b2aa00';
-const adminShowRatelimitsCommandUUID: string = '2bbfdf48-4cab-4200-b8a6-521036ffa87e';
+const adminShowRatelimitsCommandUUID: string =
+  '2bbfdf48-4cab-4200-b8a6-521036ffa87e';
 
 const adminJoinCommandDisplayName: string = 'admin-join';
 const adminPartCommandDisplayName: string = 'admin-part';
@@ -61,7 +62,7 @@ try {
   adminConfig = await loadAdminConfig();
   log.info('Admin module initialized successfully', {
     producer: 'admin',
-    adminCount: adminConfig.admins.length
+    adminCount: adminConfig.admins.length,
   });
 } catch (error) {
   log.error('Failed to initialize admin module', {
@@ -72,7 +73,11 @@ try {
 }
 
 // Function to check if a user is an authenticated admin
-function isAuthenticatedAdmin(platform: string, user: string, userHost: string): boolean {
+function isAuthenticatedAdmin(
+  platform: string,
+  user: string,
+  userHost: string
+): boolean {
   // For now, we only support IRC authentication
   if (platform !== 'irc') {
     return false;
@@ -82,9 +87,9 @@ function isAuthenticatedAdmin(platform: string, user: string, userHost: string):
   const fullHostmask = `${user}@${userHost}`;
 
   // Check if the user matches any admin's hostmask
-  return adminConfig.admins.some(admin => {
+  return adminConfig.admins.some((admin) => {
     // Check if the platform is accepted
-    const platformAccepted = admin.acceptedPlatforms.some(pattern => {
+    const platformAccepted = admin.acceptedPlatforms.some((pattern) => {
       const regex = new RegExp(pattern);
       return regex.test(platform);
     });
@@ -94,10 +99,13 @@ function isAuthenticatedAdmin(platform: string, user: string, userHost: string):
     if (admin.authentication.irc?.hostmask) {
       try {
         const hostmaskRegex = new RegExp(admin.authentication.irc.hostmask);
-        hostmaskMatches = hostmaskRegex.test(userHost) || hostmaskRegex.test(fullHostmask);
+        hostmaskMatches =
+          hostmaskRegex.test(userHost) || hostmaskRegex.test(fullHostmask);
       } catch {
         // If regex fails, fall back to exact match
-        hostmaskMatches = admin.authentication.irc.hostmask === userHost || admin.authentication.irc.hostmask === fullHostmask;
+        hostmaskMatches =
+          admin.authentication.irc.hostmask === userHost ||
+          admin.authentication.irc.hostmask === fullHostmask;
       }
     }
 
@@ -107,6 +115,34 @@ function isAuthenticatedAdmin(platform: string, user: string, userHost: string):
 
 // Register admin commands
 async function registerAdminCommands(): Promise<void> {
+  // Default rate limit configurations
+  const defaultRateLimits = {
+    join: {
+      mode: 'drop',
+      level: 'user',
+      limit: 3,
+      interval: '1m',
+    },
+    part: {
+      mode: 'drop',
+      level: 'user',
+      limit: 3,
+      interval: '1m',
+    },
+    showRatelimits: {
+      mode: 'drop',
+      level: 'user',
+      limit: 3,
+      interval: '1m',
+    },
+  };
+
+  // Use configured rate limits or defaults
+  const joinRateLimit = adminConfig.ratelimits?.join || defaultRateLimits.join;
+  const partRateLimit = adminConfig.ratelimits?.part || defaultRateLimits.part;
+  const showRatelimitsRateLimit =
+    adminConfig.ratelimits?.showRatelimits || defaultRateLimits.showRatelimits;
+
   const commands = [
     {
       type: 'command.register',
@@ -119,12 +155,7 @@ async function registerAdminCommands(): Promise<void> {
       user: '.*',
       regex: 'admin join ',
       platformPrefixAllowed: true,
-      ratelimit: {
-        mode: 'drop',
-        level: 'user',
-        limit: 3,
-        interval: '1m',
-      },
+      ratelimit: joinRateLimit,
     },
     {
       type: 'command.register',
@@ -137,12 +168,7 @@ async function registerAdminCommands(): Promise<void> {
       user: '.*',
       regex: 'admin part ',
       platformPrefixAllowed: true,
-      ratelimit: {
-        mode: 'drop',
-        level: 'user',
-        limit: 3,
-        interval: '1m',
-      },
+      ratelimit: partRateLimit,
     },
     {
       type: 'command.register',
@@ -155,19 +181,17 @@ async function registerAdminCommands(): Promise<void> {
       user: '.*',
       regex: 'admin show-ratelimits',
       platformPrefixAllowed: true,
-      ratelimit: {
-        mode: 'drop',
-        level: 'user',
-        limit: 3,
-        interval: '1m',
-      },
-    }
+      ratelimit: showRatelimitsRateLimit,
+    },
   ];
 
   for (const command of commands) {
     try {
       await nats.publish('command.register', JSON.stringify(command));
-      log.info(`Registered ${command.commandDisplayName} command with router`, { producer: 'admin' });
+      log.info(`Registered ${command.commandDisplayName} command with router`, {
+        producer: 'admin',
+        ratelimit: command.ratelimit,
+      });
     } catch (error) {
       log.error(`Failed to register ${command.commandDisplayName} command`, {
         producer: 'admin',
@@ -400,27 +424,41 @@ const routerResponseSub = nats.subscribe(
 
       // Format the statistics as an ASCII table
       let responseText = 'Rate Limit Statistics:\n';
-      
+
       if (!data.stats || Object.keys(data.stats).length === 0) {
         responseText += 'No rate limit data available.\n';
       } else {
         // Create ASCII table header
-        responseText += '+--------------------------------------+------------------+--------+----------+----------+\n';
-        responseText += '| Command UUID                         | Identifier       | Count  | Limit    | Interval |\n';
-        responseText += '+--------------------------------------+------------------+--------+----------+----------+\n';
-        
+        responseText +=
+          '+--------------------------------------+------------------+--------+----------+----------+\n';
+        responseText +=
+          '| Command UUID                         | Identifier       | Count  | Limit    | Interval |\n';
+        responseText +=
+          '+--------------------------------------+------------------+--------+----------+----------+\n';
+
         // Add each rate limit entry
         for (const [key, stat] of Object.entries(data.stats)) {
           // Type assertion for the stat object
-          const typedStat = stat as { count: number; limit: number; interval: string };
+          const typedStat = stat as {
+            count: number;
+            limit: number;
+            interval: string;
+          };
           const [commandUUID, identifier] = key.split(':');
-          const displayUUID = commandUUID.length > 36 ? commandUUID.substring(0, 33) + '...' : commandUUID;
-          const displayIdentifier = identifier.length > 16 ? identifier.substring(0, 13) + '...' : identifier;
-          
+          const displayUUID =
+            commandUUID.length > 36
+              ? commandUUID.substring(0, 33) + '...'
+              : commandUUID;
+          const displayIdentifier =
+            identifier.length > 16
+              ? identifier.substring(0, 13) + '...'
+              : identifier;
+
           responseText += `| ${displayUUID.padEnd(36)} | ${displayIdentifier.padEnd(16)} | ${typedStat.count.toString().padEnd(6)} | ${typedStat.limit.toString().padEnd(8)} | ${typedStat.interval.padEnd(8)} |\n`;
         }
-        
-        responseText += '+--------------------------------------+------------------+--------+----------+----------+\n';
+
+        responseText +=
+          '+--------------------------------------+------------------+--------+----------+----------+\n';
         responseText += `Total entries: ${Object.keys(data.stats).length}\n`;
       }
 
@@ -459,9 +497,12 @@ natsSubscriptions.push(routerResponseSub);
 const controlSubRegisterCommandAdminJoin = nats.subscribe(
   `control.registerCommands.${adminJoinCommandDisplayName}`,
   () => {
-    log.info(`Received control.registerCommands.${adminPartCommandDisplayName} control message`, {
-      producer: 'admin',
-    });
+    log.info(
+      `Received control.registerCommands.${adminPartCommandDisplayName} control message`,
+      {
+        producer: 'admin',
+      }
+    );
     void registerAdminCommands();
   }
 );
@@ -470,9 +511,12 @@ const controlSubRegisterCommandAdminJoin = nats.subscribe(
 const controlSubRegisterCommandAdminPart = nats.subscribe(
   `control.registerCommands.${adminPartCommandDisplayName}`,
   () => {
-    log.info(`Received control.registerCommands.${adminPartCommandDisplayName} control message`, {
-      producer: 'admin',
-    });
+    log.info(
+      `Received control.registerCommands.${adminPartCommandDisplayName} control message`,
+      {
+        producer: 'admin',
+      }
+    );
     void registerAdminCommands();
   }
 );
@@ -481,9 +525,12 @@ const controlSubRegisterCommandAdminPart = nats.subscribe(
 const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
   `control.registerCommands.${adminShowRatelimitsCommandDisplayName}`,
   () => {
-    log.info(`Received control.registerCommands.${adminShowRatelimitsCommandDisplayName} control message`, {
-      producer: 'admin',
-    });
+    log.info(
+      `Received control.registerCommands.${adminShowRatelimitsCommandDisplayName} control message`,
+      {
+        producer: 'admin',
+      }
+    );
     void registerAdminCommands();
   }
 );
@@ -497,4 +544,9 @@ const controlSubRegisterCommandAll = nats.subscribe(
     void registerAdminCommands();
   }
 );
-natsSubscriptions.push(controlSubRegisterCommandAdminJoin, controlSubRegisterCommandAdminPart, controlSubRegisterCommandAdminShowRatelimits, controlSubRegisterCommandAll);
+natsSubscriptions.push(
+  controlSubRegisterCommandAdminJoin,
+  controlSubRegisterCommandAdminPart,
+  controlSubRegisterCommandAdminShowRatelimits,
+  controlSubRegisterCommandAll
+);

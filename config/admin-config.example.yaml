@@ -14,3 +14,20 @@ admins:
       # Currently supporting IRC hostmask identification
       irc:
         hostmask: "nick!username@example.com"
+# Rate limit configuration for admin commands
+ratelimits:
+  join:
+    mode: drop
+    level: user
+    limit: 3
+    interval: 1m
+  part:
+    mode: drop
+    level: user
+    limit: 3
+    interval: 1m
+  showRatelimits:
+    mode: drop
+    level: user
+    limit: 3
+    interval: 1m

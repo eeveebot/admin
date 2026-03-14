@@ -1,5 +1,13 @@
 'use strict';
 
+// Rate limit configuration interface
+export interface RateLimitConfig {
+  mode: 'enqueue' | 'drop';
+  level: 'channel' | 'user' | 'global';
+  limit: number;
+  interval: string; // e.g., "30s", "1m", "5m"
+}
+
 // Admin authentication interface for IRC hostmask
 export interface IrcAuthentication {
   hostmask: string;
@@ -21,4 +29,9 @@ export interface AdminConfig {
 // Root configuration interface
 export interface AdminRootConfig {
   admins: AdminConfig[];
+  ratelimits?: {
+    join?: RateLimitConfig;
+    part?: RateLimitConfig;
+    showRatelimits?: RateLimitConfig;
+  };
 }

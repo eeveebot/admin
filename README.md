@@ -38,6 +38,16 @@ admins:
 - `acceptedPlatforms`: Array of platform identifiers or regex patterns this admin can operate on
 - `authentication`: Authentication methods for this admin
   - `irc.hostmask`: IRC hostmask pattern for identification (supports regex)
+- `ratelimits`: Optional rate limit configuration for admin commands
+  - `join`: Rate limits for the join command
+  - `part`: Rate limits for the part command
+  - `showRatelimits`: Rate limits for the show-ratelimits command
+
+Each rate limit configuration supports the following fields:
+- `mode`: Either 'drop' (reject excess requests) or 'enqueue' (queue excess requests)
+- `level`: Scope of the rate limit ('user', 'channel', or 'global')
+- `limit`: Maximum number of requests allowed
+- `interval`: Time period for the limit (e.g., '30s', '1m', '5m')
 
 See [`config/admin-config.example.yaml`](config/admin-config.example.yaml) for a complete example.
 

@@ -23,13 +23,14 @@ export async function loadAdminConfig(): Promise<AdminRootConfig> {
   try {
     // Read the YAML file
     const configFile = fs.readFileSync(configPath, 'utf8');
-    
+
     // Parse the YAML content
     const config = yaml.load(configFile) as AdminRootConfig;
-    
+
     // Validate the configuration
     if (!config.admins || !Array.isArray(config.admins)) {
-      const msg = 'Invalid admin configuration: admins array is missing or not an array';
+      const msg =
+        'Invalid admin configuration: admins array is missing or not an array';
       log.error(msg, { producer: 'admin', configPath });
       throw new Error(msg);
     }
@@ -41,32 +42,32 @@ export async function loadAdminConfig(): Promise<AdminRootConfig> {
         log.error(msg, { producer: 'admin', configPath });
         throw new Error(msg);
       }
-      
+
       if (!admin.uuid) {
         const msg = `Invalid admin configuration at index ${index}: uuid is required`;
         log.error(msg, { producer: 'admin', configPath });
         throw new Error(msg);
       }
-      
+
       if (!admin.acceptedPlatforms || !Array.isArray(admin.acceptedPlatforms)) {
         const msg = `Invalid admin configuration for ${admin.displayName}: acceptedPlatforms is required and must be an array`;
         log.error(msg, { producer: 'admin', configPath });
         throw new Error(msg);
       }
-      
+
       if (!admin.authentication) {
         const msg = `Invalid admin configuration for ${admin.displayName}: authentication is required`;
         log.error(msg, { producer: 'admin', configPath });
         throw new Error(msg);
       }
-      
+
       // For now, we only support IRC authentication
       if (!admin.authentication.irc) {
         const msg = `Invalid admin configuration for ${admin.displayName}: IRC authentication is required`;
         log.error(msg, { producer: 'admin', configPath });
         throw new Error(msg);
       }
-      
+
       if (!admin.authentication.irc.hostmask) {
         const msg = `Invalid admin configuration for ${admin.displayName}: IRC hostmask is required`;
         log.error(msg, { producer: 'admin', configPath });
@@ -74,11 +75,11 @@ export async function loadAdminConfig(): Promise<AdminRootConfig> {
       }
     }
 
-    log.info(`Loaded admin configuration with ${config.admins.length} admins`, { 
-      producer: 'admin', 
-      configPath 
+    log.info(`Loaded admin configuration with ${config.admins.length} admins`, {
+      producer: 'admin',
+      configPath,
     });
-    
+
     return config;
   } catch (error) {
     log.error('Failed to load admin configuration', {
