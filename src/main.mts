@@ -7,6 +7,8 @@ import { NatsClient, log } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
 import * as crypto from 'crypto';
+// @ts-expect-error ascii-table has no type definitions
+import AsciiTable from 'ascii-table';
 
 // Record module startup time for uptime tracking
 const moduleStartTime = Date.now();
@@ -643,20 +645,15 @@ const moduleUptimeCommandSub = nats.subscribe(
           // Sort responses by module name
           responses.sort((a, b) => a.module.localeCompare(b.module));
 
-          // Create a formatted table
-          responseText += '+------------------+---------------------+\n';
-          responseText += '| Module           | Uptime              |\n';
-          responseText += '+------------------+---------------------+\n';
+          // Create a formatted table using ascii-table
+          const table = new AsciiTable();
+          table.setHeading('Module', 'Uptime');
 
           for (const response of responses) {
-            const moduleName =
-              response.module.length > 16
-                ? response.module.substring(0, 13) + '...'
-                : response.module;
-            responseText += `| ${moduleName.padEnd(16)} | ${response.uptimeFormatted.padEnd(19)} |\n`;
+            table.addRow(response.module, response.uptimeFormatted);
           }
 
-          responseText += '+------------------+---------------------+\n';
+          responseText += table.toString() + '\n';
           responseText += `Total modules: ${responses.length}\n`;
         }
 
@@ -851,13 +848,15 @@ const routerResponseSub = nats.subscribe(
       if (!data.stats || Object.keys(data.stats).length === 0) {
         responseText += 'No rate limit data available.\n';
       } else {
-        // Create ASCII table header
-        responseText +=
-          '+------------------------+------------------------------+--------+----------+----------+\n';
-        responseText +=
-          '| Command Name           | Identifier                   | Count  | Limit    | Interval |\n';
-        responseText +=
-          '+------------------------+------------------------------+--------+----------+----------+\n';
+        // Create ASCII table using ascii-table
+        const table = new AsciiTable();
+        table.setHeading(
+          'Command Name',
+          'Identifier',
+          'Count',
+          'Limit',
+          'Interval'
+        );
 
         // Add each rate limit entry
         for (const [key, stat] of Object.entries(data.stats)) {
@@ -873,20 +872,17 @@ const routerResponseSub = nats.subscribe(
           const identifier = parts.slice(1).join(':');
           // Use command name if available, otherwise fallback to UUID
           const commandName = typedStat.commandName || commandUUID;
-          const displayName =
-            commandName.length > 22
-              ? commandName.substring(0, 19) + '...'
-              : commandName;
-          const displayIdentifier =
-            identifier.length > 28
-              ? '...' + identifier.substring(identifier.length - 25)
-              : identifier;
 
-          responseText += `| ${displayName.padEnd(22)} | ${displayIdentifier.padEnd(28)} | ${typedStat.count.toString().padEnd(6)} | ${typedStat.limit.toString().padEnd(8)} | ${typedStat.interval.padEnd(8)} |\n`;
+          table.addRow(
+            commandName,
+            identifier,
+            typedStat.count,
+            typedStat.limit,
+            typedStat.interval
+          );
         }
 
-        responseText +=
-          '+------------------------+------------------------------+--------+----------+----------+\n';
+        responseText += table.toString() + '\n';
         responseText += `Total entries: ${Object.keys(data.stats).length}\n`;
       }
 
