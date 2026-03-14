@@ -744,11 +744,11 @@ const routerResponseSub = nats.subscribe(
       } else {
         // Create ASCII table header
         responseText +=
-          '+------------------------+----------------------------+--------+----------+----------+\n';
+          '+------------------------+------------------------------+--------+----------+----------+\n';
         responseText +=
-          '| Command Name           | Identifier                 | Count  | Limit    | Interval |\n';
+          '| Command Name           | Identifier                   | Count  | Limit    | Interval |\n';
         responseText +=
-          '+------------------------+----------------------------+--------+----------+----------+\n';
+          '+------------------------+------------------------------+--------+----------+----------+\n';
 
         // Add each rate limit entry
         for (const [key, stat] of Object.entries(data.stats)) {
