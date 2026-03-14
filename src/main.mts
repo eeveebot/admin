@@ -28,6 +28,8 @@ const adminModuleRestartCommandUUID: string =
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const adminListBotModulesCommandUUID: string =
   'b2c3d4e5-f6g7-8901-bcde-fg2345678901';
+const adminBotStatsCommandUUID: string =
+  'c3d4e5f6-g7h8-9012-cdef-gh3456789012';
 
 const adminJoinCommandDisplayName: string = 'admin-join';
 const adminPartCommandDisplayName: string = 'admin-part';
@@ -36,6 +38,7 @@ const adminShowCommandRegistryCommandDisplayName: string = 'admin-show-command-r
 const adminModuleUptimeCommandDisplayName: string = 'admin-module-uptime';
 const adminModuleRestartCommandDisplayName: string = 'admin-module-restart';
 const adminListBotModulesCommandDisplayName: string = 'admin-list-bot-modules';
+const adminBotStatsCommandDisplayName: string = 'admin-bot-stats';
 
 // Help information for admin commands
 const adminHelp = [
@@ -120,6 +123,11 @@ const adminHelp = [
   {
     command: 'admin list-bot-modules',
     descr: 'List all bot modules and their deployment information',
+    params: [],
+  },
+  {
+    command: 'admin bot-stats',
+    descr: 'Show bot statistics from various modules',
     params: [],
   },
 ];
@@ -264,6 +272,12 @@ async function registerAdminCommands(): Promise<void> {
       limit: 5,
       interval: '1m',
     },
+    botStats: {
+      mode: 'drop',
+      level: 'user',
+      limit: 5,
+      interval: '1m',
+    },
   };
 
   // Use configured rate limits or defaults
@@ -279,6 +293,8 @@ async function registerAdminCommands(): Promise<void> {
     adminConfig.ratelimits?.moduleRestart || defaultRateLimits.moduleRestart;
   const listBotModulesRateLimit =
     adminConfig.ratelimits?.listBotModules || defaultRateLimits.listBotModules;
+  const botStatsRateLimit =
+    adminConfig.ratelimits?.botStats || defaultRateLimits.botStats;
 
   const commands = [
     {
@@ -371,6 +387,19 @@ async function registerAdminCommands(): Promise<void> {
       regex: '^admin\\s+list-bot-modules\\s*', // Match admin list-bot-modules command at start of line
       platformPrefixAllowed: true,
       ratelimit: listBotModulesRateLimit,
+    },
+    {
+      type: 'command.register',
+      commandUUID: adminBotStatsCommandUUID,
+      commandDisplayName: adminBotStatsCommandDisplayName,
+      platform: '.*',
+      network: '.*',
+      instance: '.*',
+      channel: '.*',
+      user: '.*',
+      regex: '^admin\\s+bot-stats\\s*', // Match admin bot-stats command at start of line
+      platformPrefixAllowed: true,
+      ratelimit: botStatsRateLimit,
     },
   ];
 
@@ -1162,6 +1191,156 @@ const listBotModulesCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(listBotModulesCommandSub);
 
+// Subscribe to bot-stats command execution messages
+const botStatsCommandSub = nats.subscribe(
+  `command.execute.${adminBotStatsCommandUUID}`,
+  (subject, message) => {
+    void (async () => {
+      try {
+        const data = JSON.parse(message.string());
+        log.info('Received command.execute for bot-stats', {
+          producer: 'admin',
+          platform: data.platform,
+          instance: data.instance,
+          channel: data.channel,
+          user: data.user,
+          originalText: data.originalText,
+        });
+
+        // Check if user is authenticated admin
+        if (!isAuthenticatedAdmin(data.platform, data.user, data.userHost)) {
+          log.warn('Unauthorized bot-stats command attempt', {
+            producer: 'admin',
+            platform: data.platform,
+            user: data.user,
+            userHost: data.userHost,
+            channel: data.channel,
+          });
+          return;
+        }
+
+        // Generate a unique reply channel for this request
+        const replyChannel = `stats.emit.response.${crypto.randomUUID()}`;
+
+        // Store responses we receive
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const responses: any[] = [];
+
+        // Subscribe to the reply channel to collect responses
+        void nats
+          .subscribe(replyChannel, (replySubject, replyMessage) => {
+            try {
+              const replyData = JSON.parse(replyMessage.string());
+              responses.push(replyData);
+            } catch (error) {
+              log.error('Failed to parse stats response', {
+                producer: 'admin',
+                error: error,
+              });
+            }
+          })
+          .then((sub) => {
+            if (sub && typeof sub === 'string') {
+              // We'll let the subscription naturally expire
+              // In a production system, we might want to track and clean these up
+            }
+          });
+
+        // Send stats.emit.request to all modules
+        const statsRequest = {
+          replyChannel: replyChannel,
+        };
+        void nats.publish('stats.emit.request', JSON.stringify(statsRequest));
+
+        // Wait 5 seconds for modules to respond
+        setTimeout(() => {
+          // Format the responses as a message
+          let responseText = 'Bot Statistics Report:\n';
+
+          if (responses.length === 0) {
+            responseText += 'No modules responded within the timeout period.\n';
+          } else {
+            // Sort responses by module name
+            responses.sort((a, b) => a.module.localeCompare(b.module));
+
+            // Create a formatted table using ascii-table
+            const table = new AsciiTable();
+            table.setHeading('Module', 'Stats');
+
+            for (const response of responses) {
+              // Format stats as a string
+              let statsStr = '';
+              if (response.stats) {
+                for (const [key, value] of Object.entries(response.stats)) {
+                  statsStr += `${key}: ${value} `;
+                }
+              } else {
+                statsStr = 'No stats available';
+              }
+              
+              table.addRow(response.module, statsStr.trim());
+            }
+
+            responseText += table.toString() + '\n';
+            responseText += `Total modules: ${responses.length}\n`;
+          }
+
+          // Send the response back to the user/channel
+          const responseMessage = {
+            platform: data.platform,
+            instance: data.instance,
+            channel: data.channel,
+            user: data.user,
+            text: responseText,
+            trace: data.trace,
+          };
+
+          const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+          void nats.publish(responseTopic, JSON.stringify(responseMessage));
+
+          log.info('Sent bot statistics report to user', {
+            producer: 'admin',
+            user: data.user,
+            channel: data.channel,
+            platform: data.platform,
+            instance: data.instance,
+            moduleCount: responses.length,
+          });
+        }, 5000); // 5 second timeout
+      } catch (error) {
+        log.error('Failed to process bot-stats command', {
+          producer: 'admin',
+          message: message.string(),
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        
+        // Try to send error message back to user
+        try {
+          const data = JSON.parse(message.string());
+          const errorMessage = {
+            platform: data.platform,
+            instance: data.instance,
+            channel: data.channel,
+            user: data.user,
+            text: `Error: Failed to process bot-stats command: ${error instanceof Error ? error.message : String(error)}`,
+            trace: data.trace,
+          };
+
+          const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
+          void nats.publish(responseTopic, JSON.stringify(errorMessage));
+        } catch (sendError) {
+          log.error('Failed to send error message to user', {
+            producer: 'admin',
+            error: sendError instanceof Error ? sendError.message : String(sendError),
+          });
+        }
+      }
+    })();
+  }
+);
+natsSubscriptions.push(botStatsCommandSub);
+
 // Subscribe to router responses with rate limit statistics
 const routerResponseSub = nats.subscribe(
   'admin.response.router.ratelimit-stats',
@@ -1454,6 +1633,20 @@ const controlSubRegisterCommandAdminListBotModules = nats.subscribe(
   }
 );
 
+// Subscribe to control messages for re-registering bot-stats command
+const controlSubRegisterCommandAdminBotStats = nats.subscribe(
+  `control.registerCommands.${adminBotStatsCommandDisplayName}`,
+  () => {
+    log.info(
+      `Received control.registerCommands.${adminBotStatsCommandDisplayName} control message`,
+      {
+        producer: 'admin',
+      }
+    );
+    void registerAdminCommands();
+  }
+);
+
 const controlSubRegisterCommandAll = nats.subscribe(
   'control.registerCommands',
   () => {
@@ -1463,6 +1656,38 @@ const controlSubRegisterCommandAll = nats.subscribe(
     void registerAdminCommands();
   }
 );
+
+// Subscribe to stats.emit.request messages and respond with module stats
+const statsEmitRequestSub = nats.subscribe('stats.emit.request', (subject, message) => {
+  try {
+    const data = JSON.parse(message.string());
+    log.info('Received stats.emit.request', {
+      producer: 'admin',
+      replyChannel: data.replyChannel,
+    });
+
+    // Calculate uptime in milliseconds
+    const uptime = Date.now() - moduleStartTime;
+
+    // Send stats back via the ephemeral reply channel
+    const statsResponse = {
+      module: 'admin',
+      stats: {
+        uptime_seconds: Math.floor(uptime / 1000),
+        uptime_formatted: `${Math.floor(uptime / 86400000)}d ${Math.floor((uptime % 86400000) / 3600000)}h ${Math.floor((uptime % 3600000) / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
+      },
+    };
+
+    if (data.replyChannel) {
+      void nats.publish(data.replyChannel, JSON.stringify(statsResponse));
+    }
+  } catch (error) {
+    log.error('Failed to process stats.emit.request', {
+      producer: 'admin',
+      error: error,
+    });
+  }
+});
 
 // Subscribe to stats.uptime messages and respond with module uptime
 const statsUptimeSub = nats.subscribe('stats.uptime', (subject, message) => {
@@ -1501,6 +1726,8 @@ natsSubscriptions.push(
   controlSubRegisterCommandAdminModuleUptime,
   controlSubRegisterCommandAdminModuleRestart,
   controlSubRegisterCommandAdminListBotModules,
+  controlSubRegisterCommandAdminBotStats,
   controlSubRegisterCommandAll,
+  statsEmitRequestSub,
   statsUptimeSub
 );
