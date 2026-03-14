@@ -432,7 +432,7 @@ const routerResponseSub = nats.subscribe(
         responseText +=
           '+--------------------------------------+------------------+--------+----------+----------+\n';
         responseText +=
-          '| Command UUID                         | Identifier       | Count  | Limit    | Interval |\n';
+          '| Command Name                         | Identifier       | Count  | Limit    | Interval |\n';
         responseText +=
           '+--------------------------------------+------------------+--------+----------+----------+\n';
 
@@ -443,18 +443,21 @@ const routerResponseSub = nats.subscribe(
             count: number;
             limit: number;
             interval: string;
+            commandName?: string;
           };
           const [commandUUID, identifier] = key.split(':');
-          const displayUUID =
-            commandUUID.length > 36
-              ? commandUUID.substring(0, 33) + '...'
-              : commandUUID;
+          // Use command name if available, otherwise fallback to UUID
+          const commandName = typedStat.commandName || commandUUID;
+          const displayName =
+            commandName.length > 36
+              ? commandName.substring(0, 33) + '...'
+              : commandName;
           const displayIdentifier =
             identifier.length > 16
               ? identifier.substring(0, 13) + '...'
               : identifier;
 
-          responseText += `| ${displayUUID.padEnd(36)} | ${displayIdentifier.padEnd(16)} | ${typedStat.count.toString().padEnd(6)} | ${typedStat.limit.toString().padEnd(8)} | ${typedStat.interval.padEnd(8)} |\n`;
+          responseText += `| ${displayName.padEnd(36)} | ${displayIdentifier.padEnd(16)} | ${typedStat.count.toString().padEnd(6)} | ${typedStat.limit.toString().padEnd(8)} | ${typedStat.interval.padEnd(8)} |\n`;
         }
 
         responseText +=
