@@ -1144,6 +1144,13 @@ export async function handleBotStatsCommand(
           let messageTimeSamples = 0;
           let commandTimeSamples = 0;
 
+          // IRC-specific metrics
+          let totalConnections = 0;
+          let totalChannelsJoined = 0;
+          let activeConnections = 0;
+          let activeChannels = 0;
+          let natsMessagesPublished = 0;
+
           // Collect timing data for percentiles
           const allMessageTimes: number[] = [];
           const allCommandTimes: number[] = [];
@@ -1189,7 +1196,7 @@ export async function handleBotStatsCommand(
                 }
               }
 
-              // Aggregate memory
+              // IRC memory
               if (parsedStats.memory_rss_mb !== undefined) {
                 totalMemoryMB += Number(parsedStats.memory_rss_mb);
               }
@@ -1223,6 +1230,27 @@ export async function handleBotStatsCommand(
                   Number(parsedStats.command_avg_processing_time_ms) > 100)
               ) {
                 modulesWithHighLatency++;
+              }
+
+              // IRC-specific metrics aggregation
+              if (parsedStats.connections_successful !== undefined) {
+                totalConnections += Number(parsedStats.connections_successful);
+              }
+
+              if (parsedStats.channels_joined !== undefined) {
+                totalChannelsJoined += Number(parsedStats.channels_joined);
+              }
+
+              if (parsedStats.active_connections !== undefined) {
+                activeConnections += Number(parsedStats.active_connections);
+              }
+
+              if (parsedStats.active_channels !== undefined) {
+                activeChannels += Number(parsedStats.active_channels);
+              }
+
+              if (parsedStats.nats_messages_published !== undefined) {
+                natsMessagesPublished += Number(parsedStats.nats_messages_published);
               }
             }
           }
@@ -1265,6 +1293,7 @@ export async function handleBotStatsCommand(
           report += `├─ Total Broadcasts: ${totalBroadcasts.toLocaleString()}\n`;
           report += `├─ Total Errors: ${totalErrors.toLocaleString()} (${errorRate}%)\n`;
           report += `├─ Total Memory Usage: ${totalMemoryMB.toLocaleString()} MB\n`;
+          report += `├─ NATS Messages Published: ${natsMessagesPublished.toLocaleString()}\n`;
 
           if (avgMessageTimeMs > 0) {
             report += `├─ Avg Message Processing: ${avgMessageTimeMs}ms (p95: ${messageP95}ms)\n`;
@@ -1272,6 +1301,14 @@ export async function handleBotStatsCommand(
 
           if (avgCommandTimeMs > 0) {
             report += `├─ Avg Command Processing: ${avgCommandTimeMs}ms (p95: ${commandP95}ms)\n`;
+          }
+
+          // Add IRC-specific metrics if available
+          if (totalConnections > 0 || totalChannelsJoined > 0) {
+            report += `├─ IRC Connections: ${totalConnections.toLocaleString()} successful\n`;
+            report += `├─ IRC Channels Joined: ${totalChannelsJoined.toLocaleString()}\n`;
+            report += `├─ Active IRC Connections: ${activeConnections.toLocaleString()}\n`;
+            report += `├─ Active IRC Channels: ${activeChannels.toLocaleString()}\n`;
           }
 
           // Add warnings if needed
@@ -1400,6 +1437,38 @@ export async function handleBotStatsCommand(
               ) {
                 metrics.push(
                   `CmdTime: ${String(parsedStats.command_avg_processing_time_ms)}ms`
+                );
+              }
+
+              // NATS messages if available
+              if (parsedStats.nats_messages_published !== undefined) {
+                metrics.push(
+                  `NATS: ${String(parsedStats.nats_messages_published)}`
+                );
+              }
+
+              // IRC-specific metrics if available
+              if (parsedStats.connections_successful !== undefined) {
+                metrics.push(
+                  `Conns: ${String(parsedStats.connections_successful)}`
+                );
+              }
+
+              if (parsedStats.channels_joined !== undefined) {
+                metrics.push(
+                  `Chans: ${String(parsedStats.channels_joined)}`
+                );
+              }
+
+              if (parsedStats.active_connections !== undefined) {
+                metrics.push(
+                  `ActConns: ${String(parsedStats.active_connections)}`
+                );
+              }
+
+              if (parsedStats.active_channels !== undefined) {
+                metrics.push(
+                  `ActChans: ${String(parsedStats.active_channels)}`
                 );
               }
 
