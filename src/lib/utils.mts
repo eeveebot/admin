@@ -1,6 +1,6 @@
 'use strict';
 
-import { NatsClient } from '@eeveebot/libeevee';
+import { NatsClient, log } from '@eeveebot/libeevee';
 
 /**
  * Set up signal handlers for graceful shutdown
@@ -70,13 +70,6 @@ export function validateEnvironmentVariables(): {
 }
 
 /**
- * Parsed metrics with optional modules property
- */
-interface ParsedMetrics extends Record<string, number | string | Record<string, ModuleStats> | undefined> {
-  modules?: Record<string, ModuleStats>;
-}
-
-/**
  * Module statistics
  */
 interface ModuleStats {
@@ -87,14 +80,31 @@ interface ModuleStats {
 /**
  * Parsed metrics with optional modules property
  */
-interface ParsedMetrics extends Record<string, number | string | Record<string, ModuleStats> | undefined> {
+interface ParsedMetrics extends Record<
+  string,
+  number | string | Record<string, ModuleStats> | undefined
+> {
+  modules?: Record<string, ModuleStats>;
+  [key: string]: number | string | Record<string, ModuleStats> | undefined;
+}
+
+/**
+ * Parsed metrics with optional modules property
+ */
+interface ParsedMetrics extends Record<
+  string,
+  number | string | Record<string, ModuleStats> | undefined
+> {
   modules?: Record<string, ModuleStats>;
 }
 
 /**
  * Parsed metrics with optional modules property
  */
-interface ParsedMetrics extends Record<string, number | string | Record<string, ModuleStats> | undefined> {
+interface ParsedMetrics extends Record<
+  string,
+  number | string | Record<string, ModuleStats> | undefined
+> {
   modules?: Record<string, ModuleStats>;
 }
 
@@ -103,10 +113,13 @@ interface ParsedMetrics extends Record<string, number | string | Record<string, 
  * @param metricsText - The raw Prometheus metrics text
  * @returns Object containing parsed metrics
  */
-export function parsePrometheusMetrics(
-  metricsText: string
-): ParsedMetrics {
+export function parsePrometheusMetrics(metricsText: string): ParsedMetrics {
   try {
+    // Handle empty or invalid input
+    if (!metricsText || typeof metricsText !== 'string') {
+      return {};
+    }
+
     // Split the text into lines
     const lines = metricsText.split('\n');
     const result: ParsedMetrics = {};
@@ -123,141 +136,177 @@ export function parsePrometheusMetrics(
 
     // Process each line
     for (const line of lines) {
-      // Skip comments and empty lines
-      if (line.startsWith('#') || line.trim() === '') {
+      try {
+        // Skip comments and empty lines
+        if (line.startsWith('#') || line.trim() === '') {
+          continue;
+        }
+
+        // Generic counter pattern: metric_name{labels} value
+        const counterMatch = line.match(/^([a-zA-Z0-9_]+)\{([^}]*)\}\s+(\d+)/);
+        if (counterMatch) {
+          const metricName = counterMatch[1];
+          const labelsStr = counterMatch[2];
+          const value = parseInt(counterMatch[3], 10);
+
+          // Skip if value is NaN
+          if (isNaN(value)) {
+            continue;
+          }
+
+          // Parse labels
+          const labels: Record<string, string> = {};
+          const labelPairs = labelsStr.split(',');
+          for (const pair of labelPairs) {
+            const [key, value] = pair.split('=');
+            if (key && value) {
+              labels[key.trim()] = value.replace(/"/g, '').trim();
+            }
+          }
+
+          // Handle specific metrics based on their names and labels
+          switch (metricName) {
+            case 'messages_total':
+              if (labels.result === 'processed') {
+                totalMessages += value;
+                const current = result.messages_processed_count
+                  ? Number(result.messages_processed_count)
+                  : 0;
+                result.messages_processed_count = current + value;
+              } else if (labels.result === 'error') {
+                totalErrors += value;
+                const current = result.errors_total
+                  ? Number(result.errors_total)
+                  : 0;
+                result.errors_total = current + value;
+              }
+              break;
+
+            case 'commands_total':
+              if (labels.rate_limit_action === 'allowed') {
+                totalCommands += value;
+                const current = result.commands_processed_count
+                  ? Number(result.commands_processed_count)
+                  : 0;
+                result.commands_processed_count = current + value;
+              } else if (
+                labels.rate_limit_action === 'dropped' ||
+                labels.rate_limit_action === 'enqueued'
+              ) {
+                totalErrors += value;
+                const current = result.errors_total
+                  ? Number(result.errors_total)
+                  : 0;
+                result.errors_total = current + value;
+              }
+              break;
+
+            case 'broadcasts_total':
+              totalBroadcasts += value;
+              {
+                const current = result.broadcasts_processed_count
+                  ? Number(result.broadcasts_processed_count)
+                  : 0;
+                result.broadcasts_processed_count = current + value;
+              }
+              break;
+
+            case 'connections_total':
+              if (labels.result === 'success') {
+                const currentConnections = result.connections_successful
+                  ? Number(result.connections_successful)
+                  : 0;
+                result.connections_successful = currentConnections + value;
+              }
+              break;
+
+            case 'nats_publish_total': {
+              const moduleName = labels.module;
+              if (moduleName) {
+                const currentNats = result.nats_messages_published
+                  ? Number(result.nats_messages_published)
+                  : 0;
+                result.nats_messages_published = currentNats + value;
+
+                // Also track per-module stats
+                const modules = result.modules || {};
+                if (!modules[moduleName]) {
+                  modules[moduleName] = { nats_publish_count: 0 };
+                }
+                modules[moduleName].nats_publish_count += value;
+                result.modules = modules;
+              }
+              break;
+            }
+
+            case 'active_connections': {
+              const currentActive = result.active_connections
+                ? Number(result.active_connections)
+                : 0;
+              result.active_connections = currentActive + value;
+              break;
+            }
+
+            case 'active_channels': {
+              const currentActiveChannels = result.active_channels
+                ? Number(result.active_channels)
+                : 0;
+              result.active_channels = currentActiveChannels + value;
+              break;
+            }
+          }
+        }
+
+        // Histogram sum patterns
+        const histogramSumMatch = line.match(
+          /^([a-zA-Z0-9_]+)_sum\{([^}]*)\}\s+([\d.]+)/
+        );
+        if (histogramSumMatch) {
+          const metricName = histogramSumMatch[1];
+          const value = parseFloat(histogramSumMatch[3]);
+
+          // Skip if value is NaN
+          if (isNaN(value)) {
+            continue;
+          }
+
+          switch (metricName) {
+            case 'message_processing_seconds':
+              messageTiming.push(value);
+              break;
+            case 'command_processing_seconds':
+              commandTiming.push(value);
+              break;
+          }
+        }
+
+        // Histogram count patterns
+        const histogramCountMatch = line.match(
+          /^([a-zA-Z0-9_]+)_count\{([^}]*)\}\s+(\d+)/
+        );
+        if (histogramCountMatch) {
+          const metricName = histogramCountMatch[1];
+          const value = parseInt(histogramCountMatch[3], 10);
+
+          // Skip if value is NaN
+          if (isNaN(value)) {
+            continue;
+          }
+
+          if (metricName === 'command_processing_seconds') {
+            if (result.command_processing_count === undefined) {
+              result.command_processing_count = value;
+            }
+          }
+        }
+      } catch (lineError) {
+        // Log error but continue processing other lines
+        log.warn('Failed to parse metrics line', {
+          producer: 'admin-utils',
+          line: line,
+          error: lineError,
+        });
         continue;
-      }
-
-      // Message counter patterns
-      const messageMatch = line.match(
-        /^messages_total\{[^}]*result="processed"[^}]*\}\s+(\d+)/
-      );
-      if (messageMatch) {
-        const count = parseInt(messageMatch[1], 10);
-        totalMessages += count;
-        const current = result.messages_processed_count ? Number(result.messages_processed_count) : 0;
-        result.messages_processed_count = current + count;
-      }
-
-      const messageErrorMatch = line.match(
-        /^messages_total\{[^}]*result="error"[^}]*\}\s+(\d+)/
-      );
-      if (messageErrorMatch) {
-        const count = parseInt(messageErrorMatch[1], 10);
-        totalErrors += count;
-        const current = result.errors_total ? Number(result.errors_total) : 0;
-        result.errors_total = current + count;
-      }
-
-      // Command counter patterns
-      const commandMatch = line.match(
-        /^commands_total\{[^}]*rate_limit_action="allowed"[^}]*\}\s+(\d+)/
-      );
-      if (commandMatch) {
-        const count = parseInt(commandMatch[1], 10);
-        totalCommands += count;
-        const current = result.commands_processed_count ? Number(result.commands_processed_count) : 0;
-        result.commands_processed_count = current + count;
-      }
-
-      const commandErrorMatch = line.match(
-        /^commands_total\{[^}]*rate_limit_action="(dropped|enqueued)"[^}]*\}\s+(\d+)/
-      );
-      if (commandErrorMatch) {
-        const count = parseInt(commandErrorMatch[2], 10);
-        totalErrors += count;
-        const current = result.errors_total ? Number(result.errors_total) : 0;
-        result.errors_total = current + count;
-      }
-
-      // Broadcast counter patterns
-      const broadcastMatch = line.match(
-        /^broadcasts_total\{[^}]*\}\s+(\d+)/
-      );
-      if (broadcastMatch) {
-        const count = parseInt(broadcastMatch[1], 10);
-        totalBroadcasts += count;
-        const current = result.broadcasts_processed_count ? Number(result.broadcasts_processed_count) : 0;
-        result.broadcasts_processed_count = current + count;
-      }
-
-      // Timing histogram patterns
-      const messageTimeSumMatch = line.match(
-        /^message_processing_seconds_sum\{[^}]*\}\s+([\d.]+)/
-      );
-      if (messageTimeSumMatch) {
-        messageTiming.push(parseFloat(messageTimeSumMatch[1]));
-      }
-
-      const commandTimeSumMatch = line.match(
-        /^command_processing_seconds_sum\{[^}]*\}\s+([\d.]+)/
-      );
-      if (commandTimeSumMatch) {
-        commandTiming.push(parseFloat(commandTimeSumMatch[1]));
-      }
-
-      const commandTimeCountMatch = line.match(
-        /^command_processing_seconds_count\{[^}]*\}\s+(\d+)/
-      );
-      if (commandTimeCountMatch) {
-        if (result.command_processing_count === undefined) {
-          result.command_processing_count = parseInt(
-            commandTimeCountMatch[1],
-            10
-          );
-        }
-      }
-
-      // Generic connection metrics
-      const connectionSuccessMatch = line.match(
-        /^connections_total\{[^}]*module="connector-irc"[^}]*result="success"[^}]*\}\s+(\d+)/
-      );
-      if (connectionSuccessMatch) {
-        const currentConnections = result.connections_successful ? Number(result.connections_successful) : 0;
-        result.connections_successful = currentConnections + parseInt(connectionSuccessMatch[1], 10);
-      }
-
-      const activeConnectionsMatch = line.match(
-        /^active_connections\{[^}]*module="connector-irc"[^}]*\}\s+(\d+)/
-      );
-      if (activeConnectionsMatch) {
-        const currentActive = result.active_connections ? Number(result.active_connections) : 0;
-        result.active_connections = currentActive + parseInt(activeConnectionsMatch[1], 10);
-      }
-
-      const channelsJoinedMatch = line.match(
-        /^channels_total\{[^}]*module="connector-irc"[^}]*action="join"[^}]*\}\s+(\d+)/
-      );
-      if (channelsJoinedMatch) {
-        const currentChannels = result.channels_joined ? Number(result.channels_joined) : 0;
-        result.channels_joined = currentChannels + parseInt(channelsJoinedMatch[1], 10);
-      }
-
-      const activeChannelsMatch = line.match(
-        /^active_channels\{[^}]*module="connector-irc"[^}]*\}\s+(\d+)/
-      );
-      if (activeChannelsMatch) {
-        const currentActiveChannels = result.active_channels ? Number(result.active_channels) : 0;
-        result.active_channels = currentActiveChannels + parseInt(activeChannelsMatch[1], 10);
-      }
-
-      // Generic pattern for NATS publish counters from any module
-      const natsPublishMatch = line.match(
-        /^nats_publish_total\{[^}]*module="([^}]+)"[^}]*\}\s+(\d+)/
-      );
-      if (natsPublishMatch) {
-        const moduleName = natsPublishMatch[1];
-        const count = parseInt(natsPublishMatch[2], 10);
-        const currentNats = result.nats_messages_published ? Number(result.nats_messages_published) : 0;
-        result.nats_messages_published = currentNats + count;
-        
-        // Also track per-module stats
-        const modules = result.modules || {};
-        if (!modules[moduleName]) {
-          modules[moduleName] = { nats_publish_count: 0 };
-        }
-        modules[moduleName].nats_publish_count += count;
-        result.modules = modules;
       }
     }
 
@@ -293,14 +342,18 @@ export function parsePrometheusMetrics(
       result.error_rate_percent =
         Math.round((totalErrors / totalMessages) * 10000) / 100;
     }
-    
+
     // Add total counters to result (used by command handlers)
     result.total_commands = totalCommands;
     result.total_broadcasts = totalBroadcasts;
 
     return result;
-  } catch {
-    // If parsing fails, return empty object
+  } catch (error) {
+    // If parsing fails, log error and return empty object
+    log.error('Failed to parse Prometheus metrics', {
+      producer: 'admin-utils',
+      error: error,
+    });
     return {};
   }
 }

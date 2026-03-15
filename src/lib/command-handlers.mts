@@ -514,6 +514,12 @@ export async function handleModuleUptimeCommand(
         responseText += table.toString() + '\n';
         responseText += `Total modules: ${responses.length}\n`;
         responseText += `Expected modules: ${moduleNames.length}\n`;
+
+        // List modules that didn't respond
+        const nonRespondingModules = Array.from(expectedResponses).sort();
+        if (nonRespondingModules.length > 0) {
+          responseText += `Non-responding modules: ${nonRespondingModules.join(', ')}\n`;
+        }
       }
 
       // Send the response back to the user/channel
@@ -537,6 +543,7 @@ export async function handleModuleUptimeCommand(
         instance: data.instance,
         moduleCount: responses.length,
         expectedModules: moduleNames.length,
+        nonRespondingModules: Array.from(expectedResponses),
       });
     };
 
@@ -1145,7 +1152,7 @@ export async function handleBotStatsCommand(
           let commandTimeSamples = 0;
           let natsMessagesPublished = 0;
 
-          // IRC-specific metrics
+          // Generic metrics
           let activeConnections = 0;
           let activeChannels = 0;
 
@@ -1156,6 +1163,12 @@ export async function handleBotStatsCommand(
           // Count modules with issues
           let modulesWithErrors = 0;
           let modulesWithHighLatency = 0;
+
+          // Module-specific aggregations
+          const moduleSpecificMetrics: Record<
+            string,
+            Record<string, number>
+          > = {};
 
           // Process each response
           for (const response of responses) {
@@ -1194,7 +1207,7 @@ export async function handleBotStatsCommand(
                 }
               }
 
-              // IRC memory
+              // Memory usage
               if (parsedStats.memory_rss_mb !== undefined) {
                 totalMemoryMB += Number(parsedStats.memory_rss_mb);
               }
@@ -1230,7 +1243,7 @@ export async function handleBotStatsCommand(
                 modulesWithHighLatency++;
               }
 
-              // IRC-specific metrics aggregation
+              // Generic metrics aggregation
               if (parsedStats.active_connections !== undefined) {
                 activeConnections += Number(parsedStats.active_connections);
               }
@@ -1240,7 +1253,31 @@ export async function handleBotStatsCommand(
               }
 
               if (parsedStats.nats_messages_published !== undefined) {
-                natsMessagesPublished += Number(parsedStats.nats_messages_published);
+                natsMessagesPublished += Number(
+                  parsedStats.nats_messages_published
+                );
+              }
+
+              // Handle module-specific metrics
+              if (parsedStats.modules) {
+                for (const [moduleName, moduleStats] of Object.entries(
+                  parsedStats.modules
+                )) {
+                  if (!moduleSpecificMetrics[moduleName]) {
+                    moduleSpecificMetrics[moduleName] = {};
+                  }
+                  for (const [metricName, metricValue] of Object.entries(
+                    moduleStats
+                  )) {
+                    if (typeof metricValue === 'number') {
+                      if (!moduleSpecificMetrics[moduleName][metricName]) {
+                        moduleSpecificMetrics[moduleName][metricName] = 0;
+                      }
+                      moduleSpecificMetrics[moduleName][metricName] +=
+                        metricValue;
+                    }
+                  }
+                }
               }
             }
           }
@@ -1261,9 +1298,9 @@ export async function handleBotStatsCommand(
             percentile: number
           ): number => {
             if (arr.length === 0) return 0;
-            arr.sort((a, b) => a - b);
-            const index = Math.floor(arr.length * percentile);
-            return arr[index];
+            const sorted = [...arr].sort((a, b) => a - b);
+            const index = Math.floor(sorted.length * percentile);
+            return sorted[index];
           };
 
           const messageP95 = calculatePercentile(allMessageTimes, 0.95);
@@ -1293,10 +1330,22 @@ export async function handleBotStatsCommand(
             report += `├─ Avg Command Processing: ${avgCommandTimeMs}ms (p95: ${commandP95}ms)\n`;
           }
 
-          // Add IRC-specific metrics if available
+          // Add generic metrics if available
           if (activeConnections > 0 || activeChannels > 0) {
-            report += `├─ Active IRC Connections: ${activeConnections.toLocaleString()}\n`;
-            report += `├─ Active IRC Channels: ${activeChannels.toLocaleString()}\n`;
+            report += `├─ Active Connections: ${activeConnections.toLocaleString()}\n`;
+            report += `├─ Active Channels: ${activeChannels.toLocaleString()}\n`;
+          }
+
+          // Add module-specific metrics if available
+          const moduleMetricEntries = Object.entries(moduleSpecificMetrics);
+          if (moduleMetricEntries.length > 0) {
+            report += '├─ Module-Specific Metrics:\n';
+            for (const [moduleName, metrics] of moduleMetricEntries) {
+              const metricStrings = Object.entries(metrics)
+                .map(([name, value]) => `${name}: ${value}`)
+                .join(', ');
+              report += `│  ├─ ${moduleName}: ${metricStrings}\n`;
+            }
           }
 
           // Add warnings if needed
@@ -1352,106 +1401,125 @@ export async function handleBotStatsCommand(
             let uptime = 'N/A';
             let keyMetrics = 'N/A';
 
-            if (response.stats) {
-              // Parse Prometheus metrics if available
-              let parsedStats = response.stats;
-              if (response.stats.prometheus_metrics) {
-                // Merge parsed Prometheus metrics with existing stats
-                parsedStats = {
-                  ...response.stats,
-                  ...parsePrometheusMetrics(
-                    response.stats.prometheus_metrics as string
-                  ),
-                };
-              }
+            try {
+              if (response.stats) {
+                // Parse Prometheus metrics if available
+                let parsedStats = response.stats;
+                if (response.stats.prometheus_metrics) {
+                  try {
+                    // Merge parsed Prometheus metrics with existing stats
+                    parsedStats = {
+                      ...response.stats,
+                      ...parsePrometheusMetrics(
+                        response.stats.prometheus_metrics as string
+                      ),
+                    };
+                  } catch (parseError) {
+                    log.warn('Failed to parse Prometheus metrics for module', {
+                      producer: 'admin',
+                      module: response.module,
+                      error: parseError,
+                    });
+                    // Continue with original stats if parsing fails
+                  }
+                }
 
-              // Extract uptime info
-              if (parsedStats.uptime_seconds !== undefined) {
-                uptime = parsedStats.uptime_formatted
-                  ? String(parsedStats.uptime_formatted)
-                  : `${parsedStats.uptime_seconds}s`;
-              } else if (parsedStats.uptime_formatted) {
-                uptime = String(parsedStats.uptime_formatted);
-              }
+                // Extract uptime info
+                if (parsedStats.uptime_seconds !== undefined) {
+                  uptime = parsedStats.uptime_formatted
+                    ? String(parsedStats.uptime_formatted)
+                    : `${parsedStats.uptime_seconds}s`;
+                } else if (parsedStats.uptime_formatted) {
+                  uptime = String(parsedStats.uptime_formatted);
+                }
 
-              // Extract key metrics based on what's available
-              const metrics: string[] = [];
+                // Extract key metrics based on what's available
+                const metrics: string[] = [];
 
-              // Memory usage if available
-              if (parsedStats.memory_rss_mb !== undefined) {
-                metrics.push(`Mem: ${String(parsedStats.memory_rss_mb)}MB`);
-              }
+                // Memory usage if available
+                if (parsedStats.memory_rss_mb !== undefined) {
+                  metrics.push(`Mem: ${String(parsedStats.memory_rss_mb)}MB`);
+                }
 
-              // Message counts if available
-              if (parsedStats.messages_processed_count !== undefined) {
-                metrics.push(
-                  `Msgs: ${String(parsedStats.messages_processed_count)}`
-                );
-              }
+                // Message counts if available
+                if (parsedStats.messages_processed_count !== undefined) {
+                  metrics.push(
+                    `Msgs: ${String(parsedStats.messages_processed_count)}`
+                  );
+                }
 
-              // Command counts if available
-              if (parsedStats.commands_processed_count !== undefined) {
-                metrics.push(
-                  `Cmds: ${String(parsedStats.commands_processed_count)}`
-                );
-              }
+                // Command counts if available
+                if (parsedStats.commands_processed_count !== undefined) {
+                  metrics.push(
+                    `Cmds: ${String(parsedStats.commands_processed_count)}`
+                  );
+                }
 
-              // Broadcast counts if available
-              if (parsedStats.broadcasts_processed_count !== undefined) {
-                metrics.push(
-                  `Bcasts: ${String(parsedStats.broadcasts_processed_count)}`
-                );
-              }
+                // Broadcast counts if available
+                if (parsedStats.broadcasts_processed_count !== undefined) {
+                  metrics.push(
+                    `Bcasts: ${String(parsedStats.broadcasts_processed_count)}`
+                  );
+                }
 
-              // Error information if available
-              if (
-                parsedStats.errors_total !== undefined &&
-                parsedStats.error_rate_percent !== undefined
-              ) {
-                metrics.push(
-                  `Err: ${String(parsedStats.errors_total)} (${String(parsedStats.error_rate_percent)}%)`
-                );
-              } else if (parsedStats.errors_total !== undefined) {
-                metrics.push(`Err: ${String(parsedStats.errors_total)}`);
-              }
+                // Error information if available
+                if (
+                  parsedStats.errors_total !== undefined &&
+                  parsedStats.error_rate_percent !== undefined
+                ) {
+                  metrics.push(
+                    `Err: ${String(parsedStats.errors_total)} (${String(parsedStats.error_rate_percent)}%)`
+                  );
+                } else if (parsedStats.errors_total !== undefined) {
+                  metrics.push(`Err: ${String(parsedStats.errors_total)}`);
+                }
 
-              // Timing information if available
-              if (parsedStats.message_avg_processing_time_ms !== undefined) {
-                metrics.push(
-                  `MsgTime: ${String(parsedStats.message_avg_processing_time_ms)}ms`
-                );
-              } else if (
-                parsedStats.command_avg_processing_time_ms !== undefined
-              ) {
-                metrics.push(
-                  `CmdTime: ${String(parsedStats.command_avg_processing_time_ms)}ms`
-                );
-              }
+                // Timing information if available
+                if (parsedStats.message_avg_processing_time_ms !== undefined) {
+                  metrics.push(
+                    `MsgTime: ${String(parsedStats.message_avg_processing_time_ms)}ms`
+                  );
+                } else if (
+                  parsedStats.command_avg_processing_time_ms !== undefined
+                ) {
+                  metrics.push(
+                    `CmdTime: ${String(parsedStats.command_avg_processing_time_ms)}ms`
+                  );
+                }
 
-              // NATS messages if available
-              if (parsedStats.nats_messages_published !== undefined) {
-                metrics.push(
-                  `NATS: ${String(parsedStats.nats_messages_published)}`
-                );
-              }
+                // NATS messages if available
+                if (parsedStats.nats_messages_published !== undefined) {
+                  metrics.push(
+                    `NATS: ${String(parsedStats.nats_messages_published)}`
+                  );
+                }
 
-              // IRC-specific metrics if available
-              if (parsedStats.active_connections !== undefined) {
-                metrics.push(
-                  `ActConns: ${String(parsedStats.active_connections)}`
-                );
-              }
-              
-              if (parsedStats.active_channels !== undefined) {
-                metrics.push(
-                  `ActChans: ${String(parsedStats.active_channels)}`
-                );
-              }
+                // Generic metrics if available
+                if (parsedStats.active_connections !== undefined) {
+                  metrics.push(
+                    `ActConns: ${String(parsedStats.active_connections)}`
+                  );
+                }
 
-              keyMetrics =
-                metrics.length > 0 ? metrics.join(' | ') : 'No key metrics';
-            } else {
-              status = 'No Stats';
+                if (parsedStats.active_channels !== undefined) {
+                  metrics.push(
+                    `ActChans: ${String(parsedStats.active_channels)}`
+                  );
+                }
+
+                keyMetrics =
+                  metrics.length > 0 ? metrics.join(' | ') : 'No key metrics';
+              } else {
+                status = 'No Stats';
+              }
+            } catch (processError) {
+              log.error('Failed to process stats for module', {
+                producer: 'admin',
+                module: response.module,
+                error: processError,
+              });
+              status = 'Error';
+              keyMetrics = 'Processing Error';
             }
 
             table.addRow(response.module, status, uptime, keyMetrics);
@@ -1497,12 +1565,20 @@ export async function handleBotStatsCommand(
       await nats.subscribe(replyChannel, (replySubject, replyMessage) => {
         try {
           const replyData: StatsResponse = JSON.parse(replyMessage.string());
+
+          // Validate required fields
+          if (!replyData.module) {
+            log.warn('Received stats response with missing module name', {
+              producer: 'admin',
+              replySubject,
+            });
+            return;
+          }
+
           responses.push(replyData);
 
           // Remove this module from expected responses
-          if (replyData.module) {
-            expectedResponses.delete(replyData.module);
-          }
+          expectedResponses.delete(replyData.module);
 
           // If we've received responses from all expected modules, we can finish early
           if (expectedResponses.size === 0 && !allResponsesReceived) {
