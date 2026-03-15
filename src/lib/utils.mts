@@ -70,17 +70,46 @@ export function validateEnvironmentVariables(): {
 }
 
 /**
+ * Parsed metrics with optional modules property
+ */
+interface ParsedMetrics extends Record<string, number | string | Record<string, ModuleStats> | undefined> {
+  modules?: Record<string, ModuleStats>;
+}
+
+/**
+ * Module statistics
+ */
+interface ModuleStats {
+  nats_publish_count: number;
+  [key: string]: number | string;
+}
+
+/**
+ * Parsed metrics with optional modules property
+ */
+interface ParsedMetrics extends Record<string, number | string | Record<string, ModuleStats> | undefined> {
+  modules?: Record<string, ModuleStats>;
+}
+
+/**
+ * Parsed metrics with optional modules property
+ */
+interface ParsedMetrics extends Record<string, number | string | Record<string, ModuleStats> | undefined> {
+  modules?: Record<string, ModuleStats>;
+}
+
+/**
  * Parse Prometheus metrics text and extract key statistics
  * @param metricsText - The raw Prometheus metrics text
  * @returns Object containing parsed metrics
  */
 export function parsePrometheusMetrics(
   metricsText: string
-): Record<string, number | string> {
+): ParsedMetrics {
   try {
     // Split the text into lines
     const lines = metricsText.split('\n');
-    const result: Record<string, number | string> = {};
+    const result: ParsedMetrics = {};
 
     // Track totals for counters
     let totalMessages = 0;
@@ -99,194 +128,136 @@ export function parsePrometheusMetrics(
         continue;
       }
 
-      // Generic pattern for message counters from any module
+      // Message counter patterns
       const messageMatch = line.match(
-        /^(.+)_messages_total\{[^}]*\}\s+(\d+)/
+        /^messages_total\{[^}]*result="processed"[^}]*\}\s+(\d+)/
       );
       if (messageMatch) {
-        totalMessages += parseInt(messageMatch[2], 10);
-        result.messages_processed_count = totalMessages;
+        const count = parseInt(messageMatch[1], 10);
+        totalMessages += count;
+        const current = result.messages_processed_count ? Number(result.messages_processed_count) : 0;
+        result.messages_processed_count = current + count;
       }
 
-      // Generic pattern for command counters from any module
+      const messageErrorMatch = line.match(
+        /^messages_total\{[^}]*result="error"[^}]*\}\s+(\d+)/
+      );
+      if (messageErrorMatch) {
+        const count = parseInt(messageErrorMatch[1], 10);
+        totalErrors += count;
+        const current = result.errors_total ? Number(result.errors_total) : 0;
+        result.errors_total = current + count;
+      }
+
+      // Command counter patterns
       const commandMatch = line.match(
-        /^(.+)_commands_total\{[^}]*\}\s+(\d+)/
+        /^commands_total\{[^}]*rate_limit_action="allowed"[^}]*\}\s+(\d+)/
       );
       if (commandMatch) {
-        totalCommands += parseInt(commandMatch[2], 10);
-        result.commands_processed_count = totalCommands;
+        const count = parseInt(commandMatch[1], 10);
+        totalCommands += count;
+        const current = result.commands_processed_count ? Number(result.commands_processed_count) : 0;
+        result.commands_processed_count = current + count;
       }
 
-      // Generic pattern for broadcast counters from any module
+      const commandErrorMatch = line.match(
+        /^commands_total\{[^}]*rate_limit_action="(dropped|enqueued)"[^}]*\}\s+(\d+)/
+      );
+      if (commandErrorMatch) {
+        const count = parseInt(commandErrorMatch[2], 10);
+        totalErrors += count;
+        const current = result.errors_total ? Number(result.errors_total) : 0;
+        result.errors_total = current + count;
+      }
+
+      // Broadcast counter patterns
       const broadcastMatch = line.match(
-        /^(.+)_broadcasts_total\{[^}]*\}\s+(\d+)/
+        /^broadcasts_total\{[^}]*\}\s+(\d+)/
       );
       if (broadcastMatch) {
-        totalBroadcasts += parseInt(broadcastMatch[2], 10);
-        result.broadcasts_processed_count = totalBroadcasts;
+        const count = parseInt(broadcastMatch[1], 10);
+        totalBroadcasts += count;
+        const current = result.broadcasts_processed_count ? Number(result.broadcasts_processed_count) : 0;
+        result.broadcasts_processed_count = current + count;
       }
 
-      // Generic pattern for error counters from any module
-      const errorMatch = line.match(/^(.+)_errors_total\{[^}]*\}\s+(\d+)/);
-      if (errorMatch) {
-        totalErrors += parseInt(errorMatch[2], 10);
-        result.errors_total = totalErrors;
-      }
-
-      // Generic pattern for memory usage metrics from any module
-      const rssMatch = line.match(
-        /^(.+)_memory_usage_bytes\{type="rss"\}\s+(\d+)/
-      );
-      if (rssMatch) {
-        const bytes = parseInt(rssMatch[2], 10);
-        const currentRss = result.memory_rss_mb ? Number(result.memory_rss_mb) : 0;
-        result.memory_rss_mb = currentRss + Math.round(bytes / (1024 * 1024));
-      }
-
-      const heapMatch = line.match(
-        /^(.+)_memory_usage_bytes\{type="heap_used"\}\s+(\d+)/
-      );
-      if (heapMatch) {
-        const bytes = parseInt(heapMatch[2], 10);
-        const currentHeap = result.memory_heap_used_mb ? Number(result.memory_heap_used_mb) : 0;
-        result.memory_heap_used_mb = currentHeap + Math.round(bytes / (1024 * 1024));
-      }
-
-      // Generic pattern for uptime metrics from any module
-      const uptimeMatch = line.match(
-        /^(.+)_uptime_seconds\s+(\d+(?:\.\d+)?)/
-      );
-      if (uptimeMatch) {
-        // We'll use the first uptime value we find (typically from router)
-        if (result.uptime_seconds === undefined) {
-          const seconds = parseFloat(uptimeMatch[2]);
-          result.uptime_seconds = seconds;
-          result.uptime_formatted = `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ${Math.floor(seconds % 60)}s`;
-        }
-      }
-
-      // Generic pattern for message processing time buckets from any module
-      const messageTimingMatch = line.match(
-        /^(.+)_message_processing_seconds_bucket\{[^}]*le="([^"]+)"\}\s+(\d+)/
-      );
-      if (messageTimingMatch) {
-        const bucket = parseFloat(messageTimingMatch[2]);
-        const count = parseInt(messageTimingMatch[3], 10);
-        // Store timing data for analysis
-        for (let i = 0; i < count; i++) {
-          messageTiming.push(bucket);
-        }
-      }
-
-      // Generic pattern for command processing time buckets from any module
-      const commandTimingMatch = line.match(
-        /^(.+)_command_processing_seconds_bucket\{[^}]*le="([^"]+)"\}\s+(\d+)/
-      );
-      if (commandTimingMatch) {
-        const bucket = parseFloat(commandTimingMatch[2]);
-        const count = parseInt(commandTimingMatch[3], 10);
-        // Store timing data for analysis
-        for (let i = 0; i < count; i++) {
-          commandTiming.push(bucket);
-        }
-      }
-
-      // Generic pattern for message processing time sum from any module
+      // Timing histogram patterns
       const messageTimeSumMatch = line.match(
-        /^(.+)_message_processing_seconds_sum\s+(\d+(?:\.\d+)?)/
+        /^message_processing_seconds_sum\{[^}]*\}\s+([\d.]+)/
       );
-      if (messageTimeSumMatch && totalMessages > 0) {
-        // We'll calculate average based on total messages from all modules
-        // This is a simplification but should work for most cases
-        const sum = parseFloat(messageTimeSumMatch[2]);
-        if (result.message_avg_processing_time_ms === undefined) {
-          result.message_avg_processing_time_ms = Math.round(
-            (sum / totalMessages) * 1000
-          );
-        }
+      if (messageTimeSumMatch) {
+        messageTiming.push(parseFloat(messageTimeSumMatch[1]));
       }
 
-      // Generic pattern for message processing time count from any module
-      const messageTimeCountMatch = line.match(
-        /^(.+)_message_processing_seconds_count\s+(\d+)/
-      );
-      if (messageTimeCountMatch) {
-        if (result.message_processing_count === undefined) {
-          result.message_processing_count = parseInt(
-            messageTimeCountMatch[2],
-            10
-          );
-        }
-      }
-
-      // Generic pattern for command processing time sum from any module
       const commandTimeSumMatch = line.match(
-        /^(.+)_command_processing_seconds_sum\s+(\d+(?:\.\d+)?)/
+        /^command_processing_seconds_sum\{[^}]*\}\s+([\d.]+)/
       );
-      if (commandTimeSumMatch && totalCommands > 0) {
-        // We'll calculate average based on total commands from all modules
-        const sum = parseFloat(commandTimeSumMatch[2]);
-        if (result.command_avg_processing_time_ms === undefined) {
-          result.command_avg_processing_time_ms = Math.round(
-            (sum / totalCommands) * 1000
-          );
-        }
+      if (commandTimeSumMatch) {
+        commandTiming.push(parseFloat(commandTimeSumMatch[1]));
       }
 
-      // Generic pattern for command processing time count from any module
       const commandTimeCountMatch = line.match(
-        /^(.+)_command_processing_seconds_count\s+(\d+)/
+        /^command_processing_seconds_count\{[^}]*\}\s+(\d+)/
       );
       if (commandTimeCountMatch) {
         if (result.command_processing_count === undefined) {
           result.command_processing_count = parseInt(
-            commandTimeCountMatch[2],
+            commandTimeCountMatch[1],
             10
           );
         }
       }
 
-      // IRC-specific metrics
-      const ircConnectionMatch = line.match(
-        /^connector_irc_connections_total\{[^}]*result="success"[^}]*\}\s+(\d+)/
+      // Generic connection metrics
+      const connectionSuccessMatch = line.match(
+        /^connections_total\{[^}]*module="connector-irc"[^}]*result="success"[^}]*\}\s+(\d+)/
       );
-      if (ircConnectionMatch) {
+      if (connectionSuccessMatch) {
         const currentConnections = result.connections_successful ? Number(result.connections_successful) : 0;
-        result.connections_successful = currentConnections + parseInt(ircConnectionMatch[1], 10);
+        result.connections_successful = currentConnections + parseInt(connectionSuccessMatch[1], 10);
       }
 
-      const ircActiveConnectionsMatch = line.match(
-        /^connector_irc_active_connections\{[^}]*\}\s+(\d+)/
+      const activeConnectionsMatch = line.match(
+        /^active_connections\{[^}]*module="connector-irc"[^}]*\}\s+(\d+)/
       );
-      if (ircActiveConnectionsMatch) {
+      if (activeConnectionsMatch) {
         const currentActive = result.active_connections ? Number(result.active_connections) : 0;
-        result.active_connections = currentActive + parseInt(ircActiveConnectionsMatch[1], 10);
+        result.active_connections = currentActive + parseInt(activeConnectionsMatch[1], 10);
       }
 
-      const ircChannelsJoinedMatch = line.match(
-        /^connector_irc_channels_total\{[^}]*action="join"[^}]*\}\s+(\d+)/
+      const channelsJoinedMatch = line.match(
+        /^channels_total\{[^}]*module="connector-irc"[^}]*action="join"[^}]*\}\s+(\d+)/
       );
-      if (ircChannelsJoinedMatch) {
+      if (channelsJoinedMatch) {
         const currentChannels = result.channels_joined ? Number(result.channels_joined) : 0;
-        result.channels_joined = currentChannels + parseInt(ircChannelsJoinedMatch[1], 10);
+        result.channels_joined = currentChannels + parseInt(channelsJoinedMatch[1], 10);
       }
 
-      const ircActiveChannelsMatch = line.match(
-        /^connector_irc_active_channels\{[^}]*\}\s+(\d+)/
+      const activeChannelsMatch = line.match(
+        /^active_channels\{[^}]*module="connector-irc"[^}]*\}\s+(\d+)/
       );
-      if (ircActiveChannelsMatch) {
+      if (activeChannelsMatch) {
         const currentActiveChannels = result.active_channels ? Number(result.active_channels) : 0;
-        result.active_channels = currentActiveChannels + parseInt(ircActiveChannelsMatch[1], 10);
+        result.active_channels = currentActiveChannels + parseInt(activeChannelsMatch[1], 10);
       }
 
       // Generic pattern for NATS publish counters from any module
       const natsPublishMatch = line.match(
-        /^(.+)_nats_publish_total\{[^}]*\}\s+(\d+)/
+        /^nats_publish_total\{[^}]*module="([^}]+)"[^}]*\}\s+(\d+)/
       );
       if (natsPublishMatch) {
+        const moduleName = natsPublishMatch[1];
         const count = parseInt(natsPublishMatch[2], 10);
         const currentNats = result.nats_messages_published ? Number(result.nats_messages_published) : 0;
         result.nats_messages_published = currentNats + count;
+        
+        // Also track per-module stats
+        const modules = result.modules || {};
+        if (!modules[moduleName]) {
+          modules[moduleName] = { nats_publish_count: 0 };
+        }
+        modules[moduleName].nats_publish_count += count;
+        result.modules = modules;
       }
     }
 
@@ -322,6 +293,10 @@ export function parsePrometheusMetrics(
       result.error_rate_percent =
         Math.round((totalErrors / totalMessages) * 10000) / 100;
     }
+    
+    // Add total counters to result (used by command handlers)
+    result.total_commands = totalCommands;
+    result.total_broadcasts = totalBroadcasts;
 
     return result;
   } catch {
