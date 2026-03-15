@@ -1143,13 +1143,11 @@ export async function handleBotStatsCommand(
           let avgCommandTime = 0;
           let messageTimeSamples = 0;
           let commandTimeSamples = 0;
+          let natsMessagesPublished = 0;
 
           // IRC-specific metrics
-          let totalConnections = 0;
-          let totalChannelsJoined = 0;
           let activeConnections = 0;
           let activeChannels = 0;
-          let natsMessagesPublished = 0;
 
           // Collect timing data for percentiles
           const allMessageTimes: number[] = [];
@@ -1233,14 +1231,6 @@ export async function handleBotStatsCommand(
               }
 
               // IRC-specific metrics aggregation
-              if (parsedStats.connections_successful !== undefined) {
-                totalConnections += Number(parsedStats.connections_successful);
-              }
-
-              if (parsedStats.channels_joined !== undefined) {
-                totalChannelsJoined += Number(parsedStats.channels_joined);
-              }
-
               if (parsedStats.active_connections !== undefined) {
                 activeConnections += Number(parsedStats.active_connections);
               }
@@ -1304,9 +1294,7 @@ export async function handleBotStatsCommand(
           }
 
           // Add IRC-specific metrics if available
-          if (totalConnections > 0 || totalChannelsJoined > 0) {
-            report += `├─ IRC Connections: ${totalConnections.toLocaleString()} successful\n`;
-            report += `├─ IRC Channels Joined: ${totalChannelsJoined.toLocaleString()}\n`;
+          if (activeConnections > 0 || activeChannels > 0) {
             report += `├─ Active IRC Connections: ${activeConnections.toLocaleString()}\n`;
             report += `├─ Active IRC Channels: ${activeChannels.toLocaleString()}\n`;
           }
@@ -1448,24 +1436,12 @@ export async function handleBotStatsCommand(
               }
 
               // IRC-specific metrics if available
-              if (parsedStats.connections_successful !== undefined) {
-                metrics.push(
-                  `Conns: ${String(parsedStats.connections_successful)}`
-                );
-              }
-
-              if (parsedStats.channels_joined !== undefined) {
-                metrics.push(
-                  `Chans: ${String(parsedStats.channels_joined)}`
-                );
-              }
-
               if (parsedStats.active_connections !== undefined) {
                 metrics.push(
                   `ActConns: ${String(parsedStats.active_connections)}`
                 );
               }
-
+              
               if (parsedStats.active_channels !== undefined) {
                 metrics.push(
                   `ActChans: ${String(parsedStats.active_channels)}`
