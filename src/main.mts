@@ -275,3 +275,15 @@ const controlSubRegisterCommandAdminBotStats = nats.subscribe(
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminBotStats);
+
+// Subscribe to general control messages for re-registering all commands
+const controlSubRegisterCommandAll = nats.subscribe(
+  'control.registerCommands',
+  () => {
+    log.info('Received control.registerCommands control message', {
+      producer: 'admin',
+    });
+    void registerAdminCommands(nats, adminConfig);
+  }
+);
+natsSubscriptions.push(controlSubRegisterCommandAll);

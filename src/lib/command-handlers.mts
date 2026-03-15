@@ -1127,7 +1127,9 @@ export async function handleBotStatsCommand(
       let allResponsesReceived = false;
 
       // Function to generate detailed statistics report
-      const generateDetailedStatsReport = (responses: StatsResponse[]): string => {
+      const generateDetailedStatsReport = (
+        responses: StatsResponse[]
+      ): string => {
         try {
           if (responses.length === 0) return '';
 
@@ -1141,11 +1143,11 @@ export async function handleBotStatsCommand(
           let avgCommandTime = 0;
           let messageTimeSamples = 0;
           let commandTimeSamples = 0;
-          
+
           // Collect timing data for percentiles
           const allMessageTimes: number[] = [];
           const allCommandTimes: number[] = [];
-          
+
           // Count modules with issues
           let modulesWithErrors = 0;
           let modulesWithHighLatency = 0;
@@ -1163,20 +1165,22 @@ export async function handleBotStatsCommand(
                   ),
                 };
               }
-              
+
               // Aggregate counters
               if (parsedStats.messages_processed_count !== undefined) {
                 totalMessages += Number(parsedStats.messages_processed_count);
               }
-              
+
               if (parsedStats.commands_processed_count !== undefined) {
                 totalCommands += Number(parsedStats.commands_processed_count);
               }
-              
+
               if (parsedStats.broadcasts_processed_count !== undefined) {
-                totalBroadcasts += Number(parsedStats.broadcasts_processed_count);
+                totalBroadcasts += Number(
+                  parsedStats.broadcasts_processed_count
+                );
               }
-              
+
               if (parsedStats.errors_total !== undefined) {
                 const errors = Number(parsedStats.errors_total);
                 totalErrors += errors;
@@ -1184,54 +1188,76 @@ export async function handleBotStatsCommand(
                   modulesWithErrors++;
                 }
               }
-              
+
               // Aggregate memory
               if (parsedStats.memory_rss_mb !== undefined) {
                 totalMemoryMB += Number(parsedStats.memory_rss_mb);
               }
-              
+
               // Aggregate timing averages
               if (parsedStats.message_avg_processing_time_ms !== undefined) {
-                avgMessageTime += Number(parsedStats.message_avg_processing_time_ms);
+                avgMessageTime += Number(
+                  parsedStats.message_avg_processing_time_ms
+                );
                 messageTimeSamples++;
-                allMessageTimes.push(Number(parsedStats.message_avg_processing_time_ms));
+                allMessageTimes.push(
+                  Number(parsedStats.message_avg_processing_time_ms)
+                );
               }
-              
+
               if (parsedStats.command_avg_processing_time_ms !== undefined) {
-                avgCommandTime += Number(parsedStats.command_avg_processing_time_ms);
+                avgCommandTime += Number(
+                  parsedStats.command_avg_processing_time_ms
+                );
                 commandTimeSamples++;
-                allCommandTimes.push(Number(parsedStats.command_avg_processing_time_ms));
+                allCommandTimes.push(
+                  Number(parsedStats.command_avg_processing_time_ms)
+                );
               }
-              
+
               // Check for high latency modules
-              if ((parsedStats.message_avg_processing_time_ms !== undefined && 
-                   Number(parsedStats.message_avg_processing_time_ms) > 100) ||
-                  (parsedStats.command_avg_processing_time_ms !== undefined && 
-                   Number(parsedStats.command_avg_processing_time_ms) > 100)) {
+              if (
+                (parsedStats.message_avg_processing_time_ms !== undefined &&
+                  Number(parsedStats.message_avg_processing_time_ms) > 100) ||
+                (parsedStats.command_avg_processing_time_ms !== undefined &&
+                  Number(parsedStats.command_avg_processing_time_ms) > 100)
+              ) {
                 modulesWithHighLatency++;
               }
             }
           }
-          
+
           // Calculate averages
-          const avgMessageTimeMs = messageTimeSamples > 0 ? Math.round(avgMessageTime / messageTimeSamples) : 0;
-          const avgCommandTimeMs = commandTimeSamples > 0 ? Math.round(avgCommandTime / commandTimeSamples) : 0;
-          
+          const avgMessageTimeMs =
+            messageTimeSamples > 0
+              ? Math.round(avgMessageTime / messageTimeSamples)
+              : 0;
+          const avgCommandTimeMs =
+            commandTimeSamples > 0
+              ? Math.round(avgCommandTime / commandTimeSamples)
+              : 0;
+
           // Calculate percentiles for timing
-          const calculatePercentile = (arr: number[], percentile: number): number => {
+          const calculatePercentile = (
+            arr: number[],
+            percentile: number
+          ): number => {
             if (arr.length === 0) return 0;
             arr.sort((a, b) => a - b);
             const index = Math.floor(arr.length * percentile);
             return arr[index];
           };
-          
+
           const messageP95 = calculatePercentile(allMessageTimes, 0.95);
           const commandP95 = calculatePercentile(allCommandTimes, 0.95);
-          
+
           // Calculate error rate
           const totalProcessed = totalMessages + totalCommands;
-          const errorRate = totalProcessed > 0 ? Math.round((totalErrors / totalProcessed) * 10000) / 100 : 0;
-          
+          const errorRate =
+            totalProcessed > 0
+              ? Math.round((totalErrors / totalProcessed) * 10000) / 100
+              : 0;
+
           // Generate report
           let report = '=== Analysis:\n';
           report += `├─ Total Messages: ${totalMessages.toLocaleString()}\n`;
@@ -1239,30 +1265,32 @@ export async function handleBotStatsCommand(
           report += `├─ Total Broadcasts: ${totalBroadcasts.toLocaleString()}\n`;
           report += `├─ Total Errors: ${totalErrors.toLocaleString()} (${errorRate}%)\n`;
           report += `├─ Total Memory Usage: ${totalMemoryMB.toLocaleString()} MB\n`;
-          
+
           if (avgMessageTimeMs > 0) {
             report += `├─ Avg Message Processing: ${avgMessageTimeMs}ms (p95: ${messageP95}ms)\n`;
           }
-          
+
           if (avgCommandTimeMs > 0) {
             report += `├─ Avg Command Processing: ${avgCommandTimeMs}ms (p95: ${commandP95}ms)\n`;
           }
-          
+
           // Add warnings if needed
           const warnings: string[] = [];
           if (modulesWithErrors > 0) {
             warnings.push(`${modulesWithErrors} modules with errors`);
           }
           if (modulesWithHighLatency > 0) {
-            warnings.push(`${modulesWithHighLatency} modules with high latency (>100ms)`);
+            warnings.push(
+              `${modulesWithHighLatency} modules with high latency (>100ms)`
+            );
           }
-          
+
           if (warnings.length > 0) {
             report += `└─ ⚠️  Warnings: ${warnings.join(', ')}\n`;
           } else {
             report += '└─ ✅ All modules healthy\n';
           }
-          
+
           return report;
         } catch (error) {
           log.error('Failed to generate detailed stats report', {
@@ -1331,34 +1359,52 @@ export async function handleBotStatsCommand(
 
               // Message counts if available
               if (parsedStats.messages_processed_count !== undefined) {
-                metrics.push(`Msgs: ${String(parsedStats.messages_processed_count)}`);
+                metrics.push(
+                  `Msgs: ${String(parsedStats.messages_processed_count)}`
+                );
               }
 
               // Command counts if available
               if (parsedStats.commands_processed_count !== undefined) {
-                metrics.push(`Cmds: ${String(parsedStats.commands_processed_count)}`);
+                metrics.push(
+                  `Cmds: ${String(parsedStats.commands_processed_count)}`
+                );
               }
 
               // Broadcast counts if available
               if (parsedStats.broadcasts_processed_count !== undefined) {
-                metrics.push(`Bcasts: ${String(parsedStats.broadcasts_processed_count)}`);
+                metrics.push(
+                  `Bcasts: ${String(parsedStats.broadcasts_processed_count)}`
+                );
               }
 
               // Error information if available
-              if (parsedStats.errors_total !== undefined && parsedStats.error_rate_percent !== undefined) {
-                metrics.push(`Err: ${String(parsedStats.errors_total)} (${String(parsedStats.error_rate_percent)}%)`);
+              if (
+                parsedStats.errors_total !== undefined &&
+                parsedStats.error_rate_percent !== undefined
+              ) {
+                metrics.push(
+                  `Err: ${String(parsedStats.errors_total)} (${String(parsedStats.error_rate_percent)}%)`
+                );
               } else if (parsedStats.errors_total !== undefined) {
                 metrics.push(`Err: ${String(parsedStats.errors_total)}`);
               }
 
               // Timing information if available
               if (parsedStats.message_avg_processing_time_ms !== undefined) {
-                metrics.push(`MsgTime: ${String(parsedStats.message_avg_processing_time_ms)}ms`);
-              } else if (parsedStats.command_avg_processing_time_ms !== undefined) {
-                metrics.push(`CmdTime: ${String(parsedStats.command_avg_processing_time_ms)}ms`);
+                metrics.push(
+                  `MsgTime: ${String(parsedStats.message_avg_processing_time_ms)}ms`
+                );
+              } else if (
+                parsedStats.command_avg_processing_time_ms !== undefined
+              ) {
+                metrics.push(
+                  `CmdTime: ${String(parsedStats.command_avg_processing_time_ms)}ms`
+                );
               }
 
-              keyMetrics = metrics.length > 0 ? metrics.join(' | ') : 'No key metrics';
+              keyMetrics =
+                metrics.length > 0 ? metrics.join(' | ') : 'No key metrics';
             } else {
               status = 'No Stats';
             }
