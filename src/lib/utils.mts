@@ -183,15 +183,15 @@ export function parsePrometheusMetrics(metricsText: string): ParsedMetrics {
               break;
 
             case 'commands_total':
-              if (labels.rate_limit_action === 'allowed') {
+              if (labels.result === 'success') {
                 totalCommands += value;
                 const current = result.commands_processed_count
                   ? Number(result.commands_processed_count)
                   : 0;
                 result.commands_processed_count = current + value;
               } else if (
-                labels.rate_limit_action === 'dropped' ||
-                labels.rate_limit_action === 'enqueued'
+                labels.result === 'rate_limited_dropped' ||
+                labels.result === 'rate_limited_enqueued'
               ) {
                 totalErrors += value;
                 const current = result.errors_total

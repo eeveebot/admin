@@ -1,6 +1,6 @@
 {
   "name": "@eeveebot/admin",
-  "version": "2.1.10",
+  "version": "2.1.11",
   "description": "the eevee admin module",
   "keywords": [
     "eevee"
@@ -27,7 +27,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@eeveebot/libeevee": "^3.6.2",
+    "@eeveebot/libeevee": "^3.6.3",
     "ascii-table": "^0.0.9",
     "irc-framework": "^4.14.0",
     "js-yaml": "^4.1.1",
