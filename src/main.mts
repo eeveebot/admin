@@ -50,7 +50,7 @@ initializeSystemMetrics('admin');
 
 // Setup HTTP server for metrics and health checks
 setupHttpServer({
-  port: process.env.HTTP_API_PORT || '9001',
+  port: process.env.HTTP_API_PORT || '9000',
   serviceName: 'admin',
 });
 
