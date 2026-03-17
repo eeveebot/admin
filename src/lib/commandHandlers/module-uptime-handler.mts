@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
+import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 // Interfaces for type safety
 interface UptimeResponse {
@@ -26,6 +27,7 @@ export async function handleModuleUptimeCommand(
   subject: string,
   message: { string(): string }
 ): Promise<void> {
+  const startTime = Date.now();
   try {
     const data = JSON.parse(message.string());
     log.info('Received command.execute for module-uptime', {
@@ -53,6 +55,7 @@ export async function handleModuleUptimeCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'unauthorized');
       return;
     }
 
@@ -80,6 +83,8 @@ export async function handleModuleUptimeCommand(
 
       const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(errorTopic, JSON.stringify(errorMessage));
+      recordNatsPublish(errorTopic, 'module_uptime_error_response');
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'config_error');
       return;
     }
 
@@ -118,6 +123,8 @@ export async function handleModuleUptimeCommand(
 
       const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(errorTopic, JSON.stringify(errorMessage));
+      recordNatsPublish(errorTopic, 'module_uptime_fetch_error_response');
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'fetch_error');
       return;
     }
 
@@ -141,6 +148,8 @@ export async function handleModuleUptimeCommand(
 
       const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(responseTopic, JSON.stringify(responseMessage));
+      recordNatsPublish(responseTopic, 'module_uptime_no_modules_response');
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'no_modules');
       return;
     }
 
@@ -199,6 +208,7 @@ export async function handleModuleUptimeCommand(
 
       const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(responseTopic, JSON.stringify(responseMessage));
+      recordNatsPublish(responseTopic, 'module_uptime_report_response');
 
       log.info('Sent module uptime report to user', {
         producer: 'admin',
@@ -210,6 +220,9 @@ export async function handleModuleUptimeCommand(
         expectedModules: moduleNames.length,
         nonRespondingModules: Array.from(expectedResponses),
       });
+      
+      // Record successful command execution
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'success');
     };
 
     // Subscribe to the reply channel to collect responses
@@ -241,6 +254,7 @@ export async function handleModuleUptimeCommand(
       replyChannel: replyChannel,
     };
     void nats.publish('stats.uptime', JSON.stringify(uptimeRequest));
+    recordNatsPublish('stats.uptime', 'module_uptime_request');
 
     // Wait 5 seconds for modules to respond, but finish early if all expected responses received
     const timeoutId = setTimeout(() => {
@@ -255,5 +269,22 @@ export async function handleModuleUptimeCommand(
       message: message.string(),
       error: error,
     });
+    // Record error
+    recordAdminError('module_uptime_command', 'process');
+    if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
+      recordAdminCommand(
+        error.platform,
+        error.network || 'unknown',
+        error.channel,
+        'module-uptime',
+        'error'
+      );
+    } else {
+      recordAdminCommand('unknown', 'unknown', 'unknown', 'module-uptime', 'error');
+    }
+  } finally {
+    // Record processing time
+    const duration = Date.now() - startTime;
+    recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

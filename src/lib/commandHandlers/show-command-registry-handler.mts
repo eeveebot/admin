@@ -3,6 +3,7 @@
 import { NatsClient, log } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
+import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle the admin show-command-registry command
@@ -17,6 +18,7 @@ export async function handleShowCommandRegistryCommand(
   subject: string,
   message: { string(): string }
 ): Promise<void> {
+  const startTime = Date.now();
   try {
     const data = JSON.parse(message.string());
     log.info('Received command.execute for show-command-registry', {
@@ -44,6 +46,7 @@ export async function handleShowCommandRegistryCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'show-command-registry', 'unauthorized');
       return;
     }
 
@@ -61,16 +64,37 @@ export async function handleShowCommandRegistryCommand(
 
     // Publish request to router
     void nats.publish('admin.request.router', JSON.stringify(requestMessage));
+    recordNatsPublish('admin.request.router', 'command_registry_request');
 
     log.info('Requested command registry from router', {
       producer: 'admin',
       trace: data.trace,
     });
+    
+    // Record successful command execution
+    recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'show-command-registry', 'success');
   } catch (error) {
     log.error('Failed to process show-command-registry command', {
       producer: 'admin',
       message: message.string(),
       error: error,
     });
+    // Record error
+    recordAdminError('show_command_registry_command', 'process');
+    if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
+      recordAdminCommand(
+        error.platform,
+        error.network || 'unknown',
+        error.channel,
+        'show-command-registry',
+        'error'
+      );
+    } else {
+      recordAdminCommand('unknown', 'unknown', 'unknown', 'show-command-registry', 'error');
+    }
+  } finally {
+    // Record processing time
+    const duration = Date.now() - startTime;
+    recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

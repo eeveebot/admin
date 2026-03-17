@@ -2,6 +2,7 @@
 
 import { NatsClient, log } from '@eeveebot/libeevee';
 import AsciiTable from 'ascii-table';
+import { recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle router responses with command registry information
@@ -75,6 +76,7 @@ export async function handleRouterCommandRegistryResponse(
 
     const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
     void nats.publish(responseTopic, JSON.stringify(responseMessage));
+    recordNatsPublish(responseTopic, 'command_registry_response');
 
     log.info('Sent command registry to user', {
       producer: 'admin',
@@ -95,17 +97,18 @@ export async function handleRouterCommandRegistryResponse(
     try {
       const data = JSON.parse(message.string());
       if (data.requester) {
-        const errorMessage = {
-          platform: data.requester.platform,
-          instance: data.requester.instance,
-          channel: data.requester.channel,
-          user: data.requester.user,
-          text: 'Error: Failed to process command registry response',
-          trace: data.trace,
-        };
+      const errorMessage = {
+        platform: data.requester.platform,
+        instance: data.requester.instance,
+        channel: data.requester.channel,
+        user: data.requester.user,
+        text: 'Error: Failed to process command registry response',
+        trace: data.trace,
+      };
 
-        const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
-        void nats.publish(responseTopic, JSON.stringify(errorMessage));
+      const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
+      void nats.publish(responseTopic, JSON.stringify(errorMessage));
+      recordNatsPublish(responseTopic, 'command_registry_error_response');
       }
     } catch (sendError) {
       log.error('Failed to send error message to user', {

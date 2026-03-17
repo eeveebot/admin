@@ -2,6 +2,7 @@
 
 import { NatsClient, log } from '@eeveebot/libeevee';
 import AsciiTable from 'ascii-table';
+import { recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle router responses with rate limit statistics
@@ -77,6 +78,7 @@ export async function handleRouterRatelimitStatsResponse(
 
     const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
     void nats.publish(responseTopic, JSON.stringify(responseMessage));
+    recordNatsPublish(responseTopic, 'ratelimit_stats_response');
 
     log.info('Sent rate limit statistics to user', {
       producer: 'admin',

@@ -3,6 +3,7 @@
 import { NatsClient, log } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
+import { recordAdminCommand, recordAdminError, recordProcessingTime } from '../metrics.mjs';
 
 /**
  * Handle the admin part command
@@ -17,6 +18,7 @@ export async function handlePartCommand(
   subject: string,
   message: { string(): string }
 ): Promise<void> {
+  const startTime = Date.now();
   try {
     const data = JSON.parse(message.string());
     log.info('Received command.execute for part', {
@@ -44,6 +46,7 @@ export async function handlePartCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'part', 'unauthorized');
       return;
     }
 
@@ -54,6 +57,7 @@ export async function handlePartCommand(
         producer: 'admin',
         text: data.text,
       });
+      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'part', 'invalid_format');
       return;
     }
 
@@ -75,11 +79,31 @@ export async function handlePartCommand(
       producer: 'admin',
       topic: controlTopic,
     });
+    
+    // Record successful command execution
+    recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'part', 'success');
   } catch (error) {
     log.error('Failed to process part command', {
       producer: 'admin',
       message: message.string(),
       error: error,
     });
+    // Record error
+    recordAdminError('part_command', 'process');
+    if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
+      recordAdminCommand(
+        error.platform,
+        error.network || 'unknown',
+        error.channel,
+        'part',
+        'error'
+      );
+    } else {
+      recordAdminCommand('unknown', 'unknown', 'unknown', 'part', 'error');
+    }
+  } finally {
+    // Record processing time
+    const duration = Date.now() - startTime;
+    recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }
