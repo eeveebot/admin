@@ -18,6 +18,7 @@ export function recordAdminCommand(
   metrics.recordCommand(platform, network, channel, result);
 }
 
-export function recordAdminError(errorType: string, _operation: string): void {
+export function recordAdminError(errorType: string, operation: string): void {
+  void operation;
   metrics.recordError(errorType);
 }
