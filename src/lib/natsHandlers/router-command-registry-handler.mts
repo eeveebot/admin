@@ -1,8 +1,7 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import AsciiTable from 'ascii-table';
-import { recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle router responses with command registry information
@@ -12,6 +11,7 @@ import { recordNatsPublish } from '../metrics.mjs';
  */
 export async function handleRouterCommandRegistryResponse(
   nats: InstanceType<typeof NatsClient>,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -76,7 +76,7 @@ export async function handleRouterCommandRegistryResponse(
 
     const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
     void nats.publish(responseTopic, JSON.stringify(responseMessage));
-    recordNatsPublish(responseTopic, 'command_registry_response');
+    metrics.recordNatsPublish('command_registry_response');
 
     log.info('Sent command registry to user', {
       producer: 'admin',
@@ -108,7 +108,7 @@ export async function handleRouterCommandRegistryResponse(
 
       const responseTopic = `chat.message.outgoing.${data.requester.platform}.${data.requester.instance}.${data.requester.channel}`;
       void nats.publish(responseTopic, JSON.stringify(errorMessage));
-      recordNatsPublish(responseTopic, 'command_registry_error_response');
+      metrics.recordNatsPublish('command_registry_error_response');
       }
     } catch (sendError) {
       log.error('Failed to send error message to user', {

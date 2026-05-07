@@ -1,9 +1,8 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle the admin show-command-registry command
@@ -15,6 +14,7 @@ import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsP
 export async function handleShowCommandRegistryCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -46,7 +46,7 @@ export async function handleShowCommandRegistryCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'show-command-registry', 'unauthorized');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
       return;
     }
 
@@ -64,7 +64,7 @@ export async function handleShowCommandRegistryCommand(
 
     // Publish request to router
     void nats.publish('admin.request.router', JSON.stringify(requestMessage));
-    recordNatsPublish('admin.request.router', 'command_registry_request');
+    metrics.recordNatsPublish('command_registry_request');
 
     log.info('Requested command registry from router', {
       producer: 'admin',
@@ -72,7 +72,7 @@ export async function handleShowCommandRegistryCommand(
     });
     
     // Record successful command execution
-    recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'show-command-registry', 'success');
+    metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
   } catch (error) {
     log.error('Failed to process show-command-registry command', {
       producer: 'admin',
@@ -80,21 +80,20 @@ export async function handleShowCommandRegistryCommand(
       error: error,
     });
     // Record error
-    recordAdminError('show_command_registry_command', 'process');
+    metrics.recordError('show_command_registry_command');
     if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      recordAdminCommand(
+      metrics.recordCommand(
         error.platform,
         error.network || 'unknown',
         error.channel,
-        'show-command-registry',
         'error'
-      );
+      )
     } else {
-      recordAdminCommand('unknown', 'unknown', 'unknown', 'show-command-registry', 'error');
+      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
     }
   } finally {
     // Record processing time
     const duration = Date.now() - startTime;
-    recordProcessingTime(duration / 1000); // Convert to seconds
+    metrics.recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

@@ -77,14 +77,14 @@ try {
 }
 
 // Register admin commands
-await registerAdminCommands(nats, adminConfig);
+await registerAdminCommands(nats, adminConfig, metrics);
 
 // Subscribe to join command execution messages
 const joinCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.join}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleJoinCommand(nats, adminConfig, subject, message);
+    void handleJoinCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(joinCommandSub);
@@ -94,7 +94,7 @@ const partCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.part}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handlePartCommand(nats, adminConfig, subject, message);
+    void handlePartCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(partCommandSub);
@@ -104,7 +104,7 @@ const showRatelimitsCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.showRatelimits}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleShowRatelimitsCommand(nats, adminConfig, subject, message);
+    void handleShowRatelimitsCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(showRatelimitsCommandSub);
@@ -114,7 +114,7 @@ const showCommandRegistryCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.showCommandRegistry}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleShowCommandRegistryCommand(nats, adminConfig, subject, message);
+    void handleShowCommandRegistryCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(showCommandRegistryCommandSub);
@@ -124,7 +124,7 @@ const moduleUptimeCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleUptime}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleModuleUptimeCommand(nats, adminConfig, subject, message);
+    void handleModuleUptimeCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(moduleUptimeCommandSub);
@@ -134,7 +134,7 @@ const moduleRestartCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleRestart}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleModuleRestartCommand(nats, adminConfig, subject, message);
+    void handleModuleRestartCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(moduleRestartCommandSub);
@@ -144,7 +144,7 @@ const listBotModulesCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.listBotModules}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleListBotModulesCommand(nats, adminConfig, subject, message);
+    void handleListBotModulesCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(listBotModulesCommandSub);
@@ -154,7 +154,7 @@ const botStatsCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.botStats}`,
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleBotStatsCommand(nats, adminConfig, subject, message);
+    void handleBotStatsCommand(nats, adminConfig, metrics, subject, message);
   }
 );
 natsSubscriptions.push(botStatsCommandSub);
@@ -164,7 +164,7 @@ const routerResponseSub = nats.subscribe(
   'admin.response.router.ratelimit-stats',
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleRouterRatelimitStatsResponse(nats, subject, message);
+    void handleRouterRatelimitStatsResponse(nats, metrics, subject, message);
   }
 );
 natsSubscriptions.push(routerResponseSub);
@@ -174,7 +174,7 @@ const routerCommandRegistryResponseSub = nats.subscribe(
   'admin.response.router.command-registry',
   (subject, message) => {
     metrics.recordNatsSubscribe(subject);
-    void handleRouterCommandRegistryResponse(nats, subject, message);
+    void handleRouterCommandRegistryResponse(nats, metrics, subject, message);
   }
 );
 natsSubscriptions.push(routerCommandRegistryResponseSub);
@@ -190,7 +190,7 @@ const controlSubRegisterCommandAdminJoin = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminJoin);
@@ -205,7 +205,7 @@ const controlSubRegisterCommandAdminPart = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminPart);
@@ -220,7 +220,7 @@ const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminShowRatelimits);
@@ -235,7 +235,7 @@ const controlSubRegisterCommandAdminShowCommandRegistry = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminShowCommandRegistry);
@@ -250,7 +250,7 @@ const controlSubRegisterCommandAdminModuleUptime = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminModuleUptime);
@@ -265,7 +265,7 @@ const controlSubRegisterCommandAdminModuleRestart = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminModuleRestart);
@@ -280,7 +280,7 @@ const controlSubRegisterCommandAdminListBotModules = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminListBotModules);
@@ -295,7 +295,7 @@ const controlSubRegisterCommandAdminBotStats = nats.subscribe(
         producer: 'admin',
       }
     );
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminBotStats);
@@ -307,7 +307,7 @@ const controlSubRegisterCommandAll = nats.subscribe(
     log.info('Received control.registerCommands control message', {
       producer: 'admin',
     });
-    void registerAdminCommands(nats, adminConfig);
+    void registerAdminCommands(nats, adminConfig, metrics);
   }
 );
 natsSubscriptions.push(controlSubRegisterCommandAll);

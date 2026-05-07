@@ -1,11 +1,10 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import * as crypto from 'crypto';
 import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 // Interfaces for type safety
 interface UptimeResponse {
@@ -24,6 +23,7 @@ interface UptimeResponse {
 export async function handleModuleUptimeCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -55,7 +55,7 @@ export async function handleModuleUptimeCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'unauthorized');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
       return;
     }
 
@@ -83,8 +83,8 @@ export async function handleModuleUptimeCommand(
 
       const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(errorTopic, JSON.stringify(errorMessage));
-      recordNatsPublish(errorTopic, 'module_uptime_error_response');
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'config_error');
+      metrics.recordNatsPublish('module_uptime_error_response');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'config_error');
       return;
     }
 
@@ -123,8 +123,8 @@ export async function handleModuleUptimeCommand(
 
       const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(errorTopic, JSON.stringify(errorMessage));
-      recordNatsPublish(errorTopic, 'module_uptime_fetch_error_response');
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'fetch_error');
+      metrics.recordNatsPublish('module_uptime_fetch_error_response');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'fetch_error');
       return;
     }
 
@@ -148,8 +148,8 @@ export async function handleModuleUptimeCommand(
 
       const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(responseTopic, JSON.stringify(responseMessage));
-      recordNatsPublish(responseTopic, 'module_uptime_no_modules_response');
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'no_modules');
+      metrics.recordNatsPublish('module_uptime_no_modules_response');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'no_modules');
       return;
     }
 
@@ -208,7 +208,7 @@ export async function handleModuleUptimeCommand(
 
       const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(responseTopic, JSON.stringify(responseMessage));
-      recordNatsPublish(responseTopic, 'module_uptime_report_response');
+      metrics.recordNatsPublish('module_uptime_report_response');
 
       log.info('Sent module uptime report to user', {
         producer: 'admin',
@@ -222,7 +222,7 @@ export async function handleModuleUptimeCommand(
       });
       
       // Record successful command execution
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-uptime', 'success');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
     };
 
     // Subscribe to the reply channel to collect responses
@@ -254,7 +254,7 @@ export async function handleModuleUptimeCommand(
       replyChannel: replyChannel,
     };
     void nats.publish('stats.uptime', JSON.stringify(uptimeRequest));
-    recordNatsPublish('stats.uptime', 'module_uptime_request');
+    metrics.recordNatsPublish('module_uptime_request');
 
     // Wait 5 seconds for modules to respond, but finish early if all expected responses received
     const timeoutId = setTimeout(() => {
@@ -270,21 +270,20 @@ export async function handleModuleUptimeCommand(
       error: error,
     });
     // Record error
-    recordAdminError('module_uptime_command', 'process');
+    metrics.recordError('module_uptime_command');
     if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      recordAdminCommand(
+      metrics.recordCommand(
         error.platform,
         error.network || 'unknown',
         error.channel,
-        'module-uptime',
         'error'
-      );
+      )
     } else {
-      recordAdminCommand('unknown', 'unknown', 'unknown', 'module-uptime', 'error');
+      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
     }
   } finally {
     // Record processing time
     const duration = Date.now() - startTime;
-    recordProcessingTime(duration / 1000); // Convert to seconds
+    metrics.recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

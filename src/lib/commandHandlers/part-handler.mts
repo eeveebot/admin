@@ -1,9 +1,8 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime } from '../metrics.mjs';
 
 /**
  * Handle the admin part command
@@ -15,6 +14,7 @@ import { recordAdminCommand, recordAdminError, recordProcessingTime } from '../m
 export async function handlePartCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -46,7 +46,7 @@ export async function handlePartCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'part', 'unauthorized');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
       return;
     }
 
@@ -57,7 +57,7 @@ export async function handlePartCommand(
         producer: 'admin',
         text: data.text,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'part', 'invalid_format');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'invalid_format');
       return;
     }
 
@@ -81,7 +81,7 @@ export async function handlePartCommand(
     });
     
     // Record successful command execution
-    recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'part', 'success');
+    metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
   } catch (error) {
     log.error('Failed to process part command', {
       producer: 'admin',
@@ -89,21 +89,20 @@ export async function handlePartCommand(
       error: error,
     });
     // Record error
-    recordAdminError('part_command', 'process');
+    metrics.recordError('part_command');
     if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      recordAdminCommand(
+      metrics.recordCommand(
         error.platform,
         error.network || 'unknown',
         error.channel,
-        'part',
         'error'
-      );
+      )
     } else {
-      recordAdminCommand('unknown', 'unknown', 'unknown', 'part', 'error');
+      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
     }
   } finally {
     // Record processing time
     const duration = Date.now() - startTime;
-    recordProcessingTime(duration / 1000); // Convert to seconds
+    metrics.recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

@@ -1,10 +1,9 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle the admin list-bot-modules command
@@ -16,6 +15,7 @@ import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsP
 export async function handleListBotModulesCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -48,7 +48,7 @@ export async function handleListBotModulesCommand(
           userHost: data.userHost,
           channel: data.channel,
         });
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'list-bot-modules', 'unauthorized');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
         return;
       }
 
@@ -76,8 +76,8 @@ export async function handleListBotModulesCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'list_bot_modules_config_error_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'list-bot-modules', 'config_error');
+        metrics.recordNatsPublish('list_bot_modules_config_error_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'config_error');
         return;
       }
 
@@ -112,8 +112,8 @@ export async function handleListBotModulesCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'list_bot_modules_connection_error_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'list-bot-modules', 'connection_error');
+        metrics.recordNatsPublish('list_bot_modules_connection_error_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'connection_error');
         return;
       }
 
@@ -138,8 +138,8 @@ export async function handleListBotModulesCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'list_bot_modules_api_error_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'list-bot-modules', 'api_error');
+        metrics.recordNatsPublish('list_bot_modules_api_error_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'api_error');
         return;
       }
 
@@ -167,8 +167,8 @@ export async function handleListBotModulesCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'list_bot_modules_parse_error_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'list-bot-modules', 'parse_error');
+        metrics.recordNatsPublish('list_bot_modules_parse_error_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'parse_error');
         return;
       }
 
@@ -217,7 +217,7 @@ export async function handleListBotModulesCommand(
 
       const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
       void nats.publish(responseTopic, JSON.stringify(responseMessage));
-      recordNatsPublish(responseTopic, 'list_bot_modules_response');
+      metrics.recordNatsPublish('list_bot_modules_response');
 
       log.info('Sent bot modules list to user', {
         producer: 'admin',
@@ -229,7 +229,7 @@ export async function handleListBotModulesCommand(
       });
       
       // Record successful command execution
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'list-bot-modules', 'success');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
     } catch (error) {
       log.error('Failed to process list-bot-modules command', {
         producer: 'admin',
@@ -238,17 +238,16 @@ export async function handleListBotModulesCommand(
         stack: error instanceof Error ? error.stack : undefined,
       });
       // Record error
-      recordAdminError('list_bot_modules_command', 'process');
+      metrics.recordError('list_bot_modules_command');
       if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-        recordAdminCommand(
-          error.platform,
-          error.network || 'unknown',
-          error.channel,
-          'list-bot-modules',
-          'error'
-        );
+        metrics.recordCommand(
+        error.platform,
+        error.network || 'unknown',
+        error.channel,
+        'error'
+      )
       } else {
-        recordAdminCommand('unknown', 'unknown', 'unknown', 'list-bot-modules', 'error');
+        metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
       }
 
       // Try to send error message back to user
@@ -265,7 +264,7 @@ export async function handleListBotModulesCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(errorMessage));
-        recordNatsPublish(responseTopic, 'list_bot_modules_exception_response');
+        metrics.recordNatsPublish('list_bot_modules_exception_response');
       } catch (sendError) {
         log.error('Failed to send error message to user', {
           producer: 'admin',
@@ -276,7 +275,7 @@ export async function handleListBotModulesCommand(
     } finally {
       // Record processing time
       const duration = Date.now() - startTime;
-      recordProcessingTime(duration / 1000); // Convert to seconds
+      metrics.recordProcessingTime(duration / 1000); // Convert to seconds
     }
   })();
 }

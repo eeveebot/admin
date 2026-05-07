@@ -1,9 +1,8 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle the admin module-restart command
@@ -15,6 +14,7 @@ import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsP
 export async function handleModuleRestartCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -46,7 +46,7 @@ export async function handleModuleRestartCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-restart', 'unauthorized');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
       return;
     }
 
@@ -57,7 +57,7 @@ export async function handleModuleRestartCommand(
         producer: 'admin',
         text: data.text,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-restart', 'invalid_format');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'invalid_format');
       return;
     }
 
@@ -72,7 +72,7 @@ export async function handleModuleRestartCommand(
           producer: 'admin',
         }
       );
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-restart', 'config_error');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'config_error');
       return;
     }
 
@@ -112,10 +112,10 @@ export async function handleModuleRestartCommand(
 
           const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
           void nats.publish(responseTopic, JSON.stringify(responseMessage));
-          recordNatsPublish(responseTopic, 'module_restart_success_response');
+          metrics.recordNatsPublish('module_restart_success_response');
           
           // Record successful command execution
-          recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-restart', 'success');
+          metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
         } else {
           const errorText = await response.text();
           log.error(`Failed to restart module ${moduleName}`, {
@@ -137,8 +137,8 @@ export async function handleModuleRestartCommand(
 
           const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
           void nats.publish(responseTopic, JSON.stringify(responseMessage));
-          recordNatsPublish(responseTopic, 'module_restart_error_response');
-          recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-restart', 'api_error');
+          metrics.recordNatsPublish('module_restart_error_response');
+          metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'api_error');
         }
       } catch (error) {
         log.error(`Error sending restart request for module ${moduleName}`, {
@@ -159,8 +159,8 @@ export async function handleModuleRestartCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'module_restart_exception_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'module-restart', 'exception');
+        metrics.recordNatsPublish('module_restart_exception_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'exception');
       }
     })();
   } catch (error) {
@@ -170,21 +170,20 @@ export async function handleModuleRestartCommand(
       error: error,
     });
     // Record error
-    recordAdminError('module_restart_command', 'process');
+    metrics.recordError('module_restart_command');
     if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      recordAdminCommand(
+      metrics.recordCommand(
         error.platform,
         error.network || 'unknown',
         error.channel,
-        'module-restart',
         'error'
-      );
+      )
     } else {
-      recordAdminCommand('unknown', 'unknown', 'unknown', 'module-restart', 'error');
+      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
     }
   } finally {
     // Record processing time
     const duration = Date.now() - startTime;
-    recordProcessingTime(duration / 1000); // Convert to seconds
+    metrics.recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

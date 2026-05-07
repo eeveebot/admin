@@ -1,10 +1,9 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../types/admin.types.mjs';
 import { adminCommandUUIDs, adminCommandDisplayNames, adminHelp } from './commandDefinitions.mjs';
 import { getAdminRateLimits } from './rateLimitDefinitions.mjs';
-import { recordNatsPublish } from './metrics.mjs';
 
 /**
  * Register admin commands with the router
@@ -13,7 +12,8 @@ import { recordNatsPublish } from './metrics.mjs';
  */
 export async function registerAdminCommands(
   nats: InstanceType<typeof NatsClient>,
-  adminConfig: AdminRootConfig
+  adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics
 ): Promise<void> {
   const {
     joinRateLimit,
@@ -142,7 +142,7 @@ export async function registerAdminCommands(
 
     try {
       await nats.publish('help.update', JSON.stringify(helpUpdate));
-      recordNatsPublish('help.update', 'help_update');
+      metrics.recordNatsPublish('help_update');
       log.info('Published admin help information', {
         producer: 'admin',
       });
@@ -168,7 +168,7 @@ export async function registerAdminCommands(
   for (const command of commands) {
     try {
       await nats.publish('command.register', JSON.stringify(command));
-      recordNatsPublish('command.register', 'command_registration');
+      metrics.recordNatsPublish('command_registration');
       log.info(`Registered ${command.commandDisplayName} command with router`, {
         producer: 'admin',
         ratelimit: command.ratelimit,

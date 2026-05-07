@@ -1,9 +1,8 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 /**
  * Handle the admin show-ratelimits command
@@ -15,6 +14,7 @@ import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsP
 export async function handleShowRatelimitsCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -46,7 +46,7 @@ export async function handleShowRatelimitsCommand(
         userHost: data.userHost,
         channel: data.channel,
       });
-      recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'show-ratelimits', 'unauthorized');
+      metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
       return;
     }
 
@@ -64,7 +64,7 @@ export async function handleShowRatelimitsCommand(
 
     // Publish request to router
     void nats.publish('admin.request.router', JSON.stringify(requestMessage));
-    recordNatsPublish('admin.request.router', 'ratelimit_stats_request');
+    metrics.recordNatsPublish('ratelimit_stats_request');
 
     log.info('Requested rate limit statistics from router', {
       producer: 'admin',
@@ -72,7 +72,7 @@ export async function handleShowRatelimitsCommand(
     });
     
     // Record successful command execution
-    recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'show-ratelimits', 'success');
+    metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
   } catch (error) {
     log.error('Failed to process show-ratelimits command', {
       producer: 'admin',
@@ -80,21 +80,20 @@ export async function handleShowRatelimitsCommand(
       error: error,
     });
     // Record error
-    recordAdminError('show_ratelimits_command', 'process');
+    metrics.recordError('show_ratelimits_command');
     if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      recordAdminCommand(
+      metrics.recordCommand(
         error.platform,
         error.network || 'unknown',
         error.channel,
-        'show-ratelimits',
         'error'
-      );
+      )
     } else {
-      recordAdminCommand('unknown', 'unknown', 'unknown', 'show-ratelimits', 'error');
+      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
     }
   } finally {
     // Record processing time
     const duration = Date.now() - startTime;
-    recordProcessingTime(duration / 1000); // Convert to seconds
+    metrics.recordProcessingTime(duration / 1000); // Convert to seconds
   }
 }

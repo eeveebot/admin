@@ -1,12 +1,11 @@
 'use strict';
 
-import { NatsClient, log } from '@eeveebot/libeevee';
+import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import * as crypto from 'crypto';
 import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
 import { parsePrometheusMetrics } from '../utils.mjs';
-import { recordAdminCommand, recordAdminError, recordProcessingTime, recordNatsPublish } from '../metrics.mjs';
 
 // Interfaces for type safety
 interface StatsResponse {
@@ -25,6 +24,7 @@ interface StatsResponse {
 export async function handleBotStatsCommand(
   nats: InstanceType<typeof NatsClient>,
   adminConfig: AdminRootConfig,
+  metrics: ModuleMetrics,
   subject: string,
   message: { string(): string }
 ): Promise<void> {
@@ -57,7 +57,7 @@ export async function handleBotStatsCommand(
           userHost: data.userHost,
           channel: data.channel,
         });
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'bot-stats', 'unauthorized');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'unauthorized');
         return;
       }
 
@@ -85,8 +85,8 @@ export async function handleBotStatsCommand(
 
         const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(errorTopic, JSON.stringify(errorMessage));
-        recordNatsPublish(errorTopic, 'bot_stats_config_error_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'bot-stats', 'config_error');
+        metrics.recordNatsPublish('bot_stats_config_error_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'config_error');
         return;
       }
 
@@ -127,8 +127,8 @@ export async function handleBotStatsCommand(
 
         const errorTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(errorTopic, JSON.stringify(errorMessage));
-        recordNatsPublish(errorTopic, 'bot_stats_fetch_error_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'bot-stats', 'fetch_error');
+        metrics.recordNatsPublish('bot_stats_fetch_error_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'fetch_error');
         return;
       }
 
@@ -152,8 +152,8 @@ export async function handleBotStatsCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'bot_stats_no_modules_response');
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'bot-stats', 'no_modules');
+        metrics.recordNatsPublish('bot_stats_no_modules_response');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'no_modules');
         return;
       }
 
@@ -581,7 +581,7 @@ export async function handleBotStatsCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(responseMessage));
-        recordNatsPublish(responseTopic, 'bot_stats_report_response');
+        metrics.recordNatsPublish('bot_stats_report_response');
 
         log.info('Sent bot statistics report to user', {
           producer: 'admin',
@@ -594,7 +594,7 @@ export async function handleBotStatsCommand(
         });
         
         // Record successful command execution
-        recordAdminCommand(data.platform, data.network || 'unknown', data.channel, 'bot-stats', 'success');
+        metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
       };
 
       // Subscribe to the reply channel to collect responses
@@ -634,7 +634,7 @@ export async function handleBotStatsCommand(
         replyChannel: replyChannel,
       };
       void nats.publish('stats.emit.request', JSON.stringify(statsRequest));
-      recordNatsPublish('stats.emit.request', 'bot_stats_request');
+      metrics.recordNatsPublish('bot_stats_request');
 
       // Wait 5 seconds for modules to respond, but finish early if all expected responses received
       const timeoutId = setTimeout(() => {
@@ -651,17 +651,16 @@ export async function handleBotStatsCommand(
         stack: error instanceof Error ? error.stack : undefined,
       });
       // Record error
-      recordAdminError('bot_stats_command', 'process');
+      metrics.recordError('bot_stats_command');
       if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-        recordAdminCommand(
-          error.platform,
-          error.network || 'unknown',
-          error.channel,
-          'bot-stats',
-          'error'
-        );
+        metrics.recordCommand(
+        error.platform,
+        error.network || 'unknown',
+        error.channel,
+        'error'
+      )
       } else {
-        recordAdminCommand('unknown', 'unknown', 'unknown', 'bot-stats', 'error');
+        metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
       }
 
       // Try to send error message back to user
@@ -678,7 +677,7 @@ export async function handleBotStatsCommand(
 
         const responseTopic = `chat.message.outgoing.${data.platform}.${data.instance}.${data.channel}`;
         void nats.publish(responseTopic, JSON.stringify(errorMessage));
-        recordNatsPublish(responseTopic, 'bot_stats_exception_response');
+        metrics.recordNatsPublish('bot_stats_exception_response');
       } catch (sendError) {
         log.error('Failed to send error message to user', {
           producer: 'admin',
@@ -689,7 +688,7 @@ export async function handleBotStatsCommand(
     } finally {
       // Record processing time
       const duration = Date.now() - startTime;
-      recordProcessingTime(duration / 1000); // Convert to seconds
+      metrics.recordProcessingTime(duration / 1000); // Convert to seconds
     }
   })();
 }
