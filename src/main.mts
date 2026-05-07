@@ -3,25 +3,20 @@
 // Admin module
 // manages bot administrators and permissions
 
-import { NatsClient, log } from '@eeveebot/libeevee';
-import { loadAdminConfig } from './lib/admin-config.mjs';
-import { AdminRootConfig } from './types/admin.types.mjs';
 import {
-  setupSignalHandlers,
-  setupNatsConnection,
-  validateEnvironmentVariables,
-} from './lib/utils.mjs';
-
-// Import metrics
-import {
+  NatsClient,
+  log,
+  createNatsConnection,
+  registerGracefulShutdown,
+  createModuleMetrics,
+  register as promRegister,
   initializeSystemMetrics,
   setupHttpServer,
-  register,
+  registerCommand,
+  sendChatMessage,
 } from '@eeveebot/libeevee';
-import {
-  recordNatsSubscribe,
-  recordNatsPublish,
-} from './lib/metrics.mjs';
+import { loadAdminConfig } from './lib/admin-config.mjs';
+import { AdminRootConfig } from './types/admin.types.mjs';
 import {
   registerAdminCommands,
   adminCommandUUIDs,
@@ -45,6 +40,9 @@ import {
 // Record module startup time for uptime tracking
 const moduleStartTime = Date.now();
 
+// Initialize module-scoped metrics recorder
+const metrics = createModuleMetrics('admin');
+
 // Initialize system metrics
 initializeSystemMetrics('admin');
 
@@ -57,14 +55,11 @@ setupHttpServer({
 const natsClients: InstanceType<typeof NatsClient>[] = [];
 const natsSubscriptions: Array<Promise<string | boolean>> = [];
 
-// Setup signal handlers for graceful shutdown
-setupSignalHandlers(natsClients);
-
-// Validate environment variables
-const { natsHost, natsToken } = validateEnvironmentVariables();
+// Register graceful shutdown handlers
+registerGracefulShutdown(natsClients);
 
 // Setup NATS connection
-const nats = await setupNatsConnection(natsHost, natsToken);
+const nats = await createNatsConnection();
 natsClients.push(nats);
 
 // Load admin configuration
@@ -90,7 +85,7 @@ await registerAdminCommands(nats, adminConfig);
 const joinCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.join}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleJoinCommand(nats, adminConfig, subject, message);
   }
 );
@@ -100,7 +95,7 @@ natsSubscriptions.push(joinCommandSub);
 const partCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.part}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handlePartCommand(nats, adminConfig, subject, message);
   }
 );
@@ -110,7 +105,7 @@ natsSubscriptions.push(partCommandSub);
 const showRatelimitsCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.showRatelimits}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleShowRatelimitsCommand(nats, adminConfig, subject, message);
   }
 );
@@ -120,7 +115,7 @@ natsSubscriptions.push(showRatelimitsCommandSub);
 const showCommandRegistryCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.showCommandRegistry}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleShowCommandRegistryCommand(nats, adminConfig, subject, message);
   }
 );
@@ -130,7 +125,7 @@ natsSubscriptions.push(showCommandRegistryCommandSub);
 const moduleUptimeCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleUptime}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleModuleUptimeCommand(nats, adminConfig, subject, message);
   }
 );
@@ -140,7 +135,7 @@ natsSubscriptions.push(moduleUptimeCommandSub);
 const moduleRestartCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleRestart}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleModuleRestartCommand(nats, adminConfig, subject, message);
   }
 );
@@ -150,7 +145,7 @@ natsSubscriptions.push(moduleRestartCommandSub);
 const listBotModulesCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.listBotModules}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleListBotModulesCommand(nats, adminConfig, subject, message);
   }
 );
@@ -160,7 +155,7 @@ natsSubscriptions.push(listBotModulesCommandSub);
 const botStatsCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.botStats}`,
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleBotStatsCommand(nats, adminConfig, subject, message);
   }
 );
@@ -170,7 +165,7 @@ natsSubscriptions.push(botStatsCommandSub);
 const routerResponseSub = nats.subscribe(
   'admin.response.router.ratelimit-stats',
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleRouterRatelimitStatsResponse(nats, subject, message);
   }
 );
@@ -180,7 +175,7 @@ natsSubscriptions.push(routerResponseSub);
 const routerCommandRegistryResponseSub = nats.subscribe(
   'admin.response.router.command-registry',
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     void handleRouterCommandRegistryResponse(nats, subject, message);
   }
 );
@@ -190,7 +185,7 @@ natsSubscriptions.push(routerCommandRegistryResponseSub);
 const controlSubRegisterCommandAdminJoin = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.join}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.join} control message`,
       {
@@ -202,11 +197,10 @@ const controlSubRegisterCommandAdminJoin = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminJoin);
 
-// Subscribe to control messages for re-registering commands
 const controlSubRegisterCommandAdminPart = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.part}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.part} control message`,
       {
@@ -218,11 +212,10 @@ const controlSubRegisterCommandAdminPart = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminPart);
 
-// Subscribe to control messages for re-registering show-ratelimits command
 const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.showRatelimits}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.showRatelimits} control message`,
       {
@@ -234,11 +227,10 @@ const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminShowRatelimits);
 
-// Subscribe to control messages for re-registering show-command-registry command
 const controlSubRegisterCommandAdminShowCommandRegistry = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.showCommandRegistry}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.showCommandRegistry} control message`,
       {
@@ -250,11 +242,10 @@ const controlSubRegisterCommandAdminShowCommandRegistry = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminShowCommandRegistry);
 
-// Subscribe to control messages for re-registering module-uptime command
 const controlSubRegisterCommandAdminModuleUptime = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.moduleUptime}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.moduleUptime} control message`,
       {
@@ -266,11 +257,10 @@ const controlSubRegisterCommandAdminModuleUptime = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminModuleUptime);
 
-// Subscribe to control messages for re-registering module-restart command
 const controlSubRegisterCommandAdminModuleRestart = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.moduleRestart}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.moduleRestart} control message`,
       {
@@ -282,11 +272,10 @@ const controlSubRegisterCommandAdminModuleRestart = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminModuleRestart);
 
-// Subscribe to control messages for re-registering list-bot-modules command
 const controlSubRegisterCommandAdminListBotModules = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.listBotModules}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.listBotModules} control message`,
       {
@@ -298,11 +287,10 @@ const controlSubRegisterCommandAdminListBotModules = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminListBotModules);
 
-// Subscribe to control messages for re-registering bot-stats command
 const controlSubRegisterCommandAdminBotStats = nats.subscribe(
   `control.registerCommands.${adminCommandDisplayNames.botStats}`,
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info(
       `Received control.registerCommands.${adminCommandDisplayNames.botStats} control message`,
       {
@@ -314,11 +302,10 @@ const controlSubRegisterCommandAdminBotStats = nats.subscribe(
 );
 natsSubscriptions.push(controlSubRegisterCommandAdminBotStats);
 
-// Subscribe to general control messages for re-registering all commands
 const controlSubRegisterCommandAll = nats.subscribe(
   'control.registerCommands',
   (subject) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     log.info('Received control.registerCommands control message', {
       producer: 'admin',
     });
@@ -331,7 +318,7 @@ natsSubscriptions.push(controlSubRegisterCommandAll);
 const statsEmitRequestSub = nats.subscribe(
   'stats.emit.request',
   (subject, message) => {
-    recordNatsSubscribe(subject);
+    metrics.recordNatsSubscribe(subject);
     try {
       const data = JSON.parse(message.string());
       log.info('Received stats.emit.request', {
@@ -339,17 +326,13 @@ const statsEmitRequestSub = nats.subscribe(
         replyChannel: data.replyChannel,
       });
 
-      // Calculate uptime in milliseconds
       const uptime = Date.now() - moduleStartTime;
 
-      // Get all prom-client metrics
-      void register
+      void promRegister
         .metrics()
         .then((prometheusMetrics) => {
-          // Get memory usage information
           const memoryUsage = process.memoryUsage();
 
-          // Send stats back via the ephemeral reply channel
           const statsResponse = {
             module: 'admin',
             stats: {
@@ -365,7 +348,7 @@ const statsEmitRequestSub = nats.subscribe(
 
           if (data.replyChannel) {
             void nats.publish(data.replyChannel, JSON.stringify(statsResponse));
-            recordNatsPublish(data.replyChannel, 'stats_response');
+            metrics.recordNatsPublish('stats_response');
           }
         })
         .catch((error) => {
