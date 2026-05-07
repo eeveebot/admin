@@ -1,12 +1,6 @@
 'use strict';
 
-// Rate limit configuration interface
-export interface RateLimitConfig {
-  mode: 'enqueue' | 'drop';
-  level: 'channel' | 'user' | 'global';
-  limit: number;
-  interval: string; // e.g., "30s", "1m", "5m"
-}
+import { RateLimitConfig } from '@eeveebot/libeevee';
 
 // Admin authentication interface for IRC hostmask
 export interface IrcAuthentication {
