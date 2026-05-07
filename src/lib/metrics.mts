@@ -3,7 +3,13 @@ import { createModuleMetrics } from '@eeveebot/libeevee';
 const metrics = createModuleMetrics('admin');
 
 // Re-export the standard metrics
-export const recordNatsPublish = metrics.recordNatsPublish;
+// recordNatsPublish accepts (subject, messageType) for backward compat,
+// but only uses messageType (the module name is already set)
+export function recordNatsPublish(subject: string, messageType: string): void {
+  void subject;
+  metrics.recordNatsPublish(messageType);
+}
+
 export const recordNatsSubscribe = metrics.recordNatsSubscribe;
 export const recordProcessingTime = metrics.recordProcessingTime;
 
