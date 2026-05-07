@@ -12,8 +12,6 @@ import {
   register as promRegister,
   initializeSystemMetrics,
   setupHttpServer,
-  registerCommand,
-  sendChatMessage,
 } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
