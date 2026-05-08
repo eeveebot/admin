@@ -12,6 +12,8 @@ import {
   register as promRegister,
   initializeSystemMetrics,
   setupHttpServer,
+  registerHelp,
+  HelpEntry,
 } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
@@ -19,6 +21,7 @@ import {
   registerAdminCommands,
   adminCommandUUIDs,
   adminCommandDisplayNames,
+  adminHelp,
 } from './lib/command-registration.mjs';
 import {
   handleJoinCommand,
@@ -367,3 +370,7 @@ const statsEmitRequestSub = nats.subscribe(
   }
 );
 natsSubscriptions.push(statsEmitRequestSub);
+
+// Register help information
+const helpSubs = await registerHelp(nats, 'admin', adminHelp as HelpEntry[], metrics);
+natsSubscriptions.push(...helpSubs);
