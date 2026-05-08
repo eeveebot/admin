@@ -44,14 +44,16 @@ const metrics = createModuleMetrics('admin');
 // Initialize system metrics
 initializeSystemMetrics('admin');
 
+
+
+const natsClients: InstanceType<typeof NatsClient>[] = [];
+
 // Setup HTTP server for metrics and health checks
 setupHttpServer({
   port: process.env.HTTP_API_PORT || '9000',
   serviceName: 'admin',
   natsClients: natsClients,
 });
-
-const natsClients: InstanceType<typeof NatsClient>[] = [];
 const natsSubscriptions: Array<Promise<string | boolean>> = [];
 
 // Register graceful shutdown handlers
