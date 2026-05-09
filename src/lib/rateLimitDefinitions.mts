@@ -1,5 +1,6 @@
 'use strict';
 
+import { RateLimitConfig } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../types/admin.types.mjs';
 
 /**
@@ -9,7 +10,7 @@ import { AdminRootConfig } from '../types/admin.types.mjs';
  */
 export function getAdminRateLimits(adminConfig: AdminRootConfig) {
   // Default rate limit configurations
-  const defaultRateLimits = {
+  const defaultRateLimits: Record<string, RateLimitConfig> = {
     join: {
       mode: 'drop',
       level: 'user',
@@ -78,13 +79,13 @@ export function getAdminRateLimits(adminConfig: AdminRootConfig) {
     adminConfig.ratelimits?.botStats || defaultRateLimits.botStats;
 
   return {
-    joinRateLimit,
-    partRateLimit,
-    showRatelimitsRateLimit,
-    showCommandRegistryRateLimit,
-    moduleUptimeRateLimit,
-    moduleRestartRateLimit,
-    listBotModulesRateLimit,
-    botStatsRateLimit,
+    joinRateLimit: joinRateLimit as RateLimitConfig,
+    partRateLimit: partRateLimit as RateLimitConfig,
+    showRatelimitsRateLimit: showRatelimitsRateLimit as RateLimitConfig,
+    showCommandRegistryRateLimit: showCommandRegistryRateLimit as RateLimitConfig,
+    moduleUptimeRateLimit: moduleUptimeRateLimit as RateLimitConfig,
+    moduleRestartRateLimit: moduleRestartRateLimit as RateLimitConfig,
+    listBotModulesRateLimit: listBotModulesRateLimit as RateLimitConfig,
+    botStatsRateLimit: botStatsRateLimit as RateLimitConfig,
   };
 }

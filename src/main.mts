@@ -9,20 +9,21 @@ import {
   createNatsConnection,
   registerGracefulShutdown,
   createModuleMetrics,
-  register as promRegister,
   initializeSystemMetrics,
   setupHttpServer,
+  registerCommand,
   registerHelp,
+  registerStatsHandlers,
   HelpEntry,
 } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
 import {
-  registerAdminCommands,
   adminCommandUUIDs,
   adminCommandDisplayNames,
   adminHelp,
-} from './lib/command-registration.mjs';
+} from './lib/commandDefinitions.mjs';
+import { getAdminRateLimits } from './lib/rateLimitDefinitions.mjs';
 import {
   handleJoinCommand,
   handlePartCommand,
@@ -46,8 +47,6 @@ const metrics = createModuleMetrics('admin');
 
 // Initialize system metrics
 initializeSystemMetrics('admin');
-
-
 
 const natsClients: InstanceType<typeof NatsClient>[] = [];
 
@@ -82,10 +81,115 @@ try {
   throw error;
 }
 
-// Register admin commands
-await registerAdminCommands(nats, adminConfig, metrics);
+// Get rate limits from admin config
+const rateLimits = getAdminRateLimits(adminConfig);
 
-// Subscribe to join command execution messages
+// Register commands with the router using registerCommand helper
+const joinSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.join,
+    commandDisplayName: adminCommandDisplayNames.join,
+    regex: '^admin join',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.joinRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...joinSubs);
+
+const partSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.part,
+    commandDisplayName: adminCommandDisplayNames.part,
+    regex: '^admin part',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.partRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...partSubs);
+
+const showRatelimitsSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.showRatelimits,
+    commandDisplayName: adminCommandDisplayNames.showRatelimits,
+    regex: '^admin show-ratelimits',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.showRatelimitsRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...showRatelimitsSubs);
+
+const showCommandRegistrySubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.showCommandRegistry,
+    commandDisplayName: adminCommandDisplayNames.showCommandRegistry,
+    regex: '^admin show-command-registry',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.showCommandRegistryRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...showCommandRegistrySubs);
+
+const moduleUptimeSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.moduleUptime,
+    commandDisplayName: adminCommandDisplayNames.moduleUptime,
+    regex: '^admin module-uptime',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.moduleUptimeRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...moduleUptimeSubs);
+
+const moduleRestartSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.moduleRestart,
+    commandDisplayName: adminCommandDisplayNames.moduleRestart,
+    regex: '^admin module-restart',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.moduleRestartRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...moduleRestartSubs);
+
+const listBotModulesSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.listBotModules,
+    commandDisplayName: adminCommandDisplayNames.listBotModules,
+    regex: '^admin list-bot-modules',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.listBotModulesRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...listBotModulesSubs);
+
+const botStatsSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.botStats,
+    commandDisplayName: adminCommandDisplayNames.botStats,
+    regex: '^admin bot-stats',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.botStatsRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...botStatsSubs);
+
+// Subscribe to command execution messages
 const joinCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.join}`,
   (subject, message) => {
@@ -95,7 +199,6 @@ const joinCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(joinCommandSub);
 
-// Subscribe to part command execution messages
 const partCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.part}`,
   (subject, message) => {
@@ -105,7 +208,6 @@ const partCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(partCommandSub);
 
-// Subscribe to show-ratelimits command execution messages
 const showRatelimitsCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.showRatelimits}`,
   (subject, message) => {
@@ -115,7 +217,6 @@ const showRatelimitsCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(showRatelimitsCommandSub);
 
-// Subscribe to show-command-registry command execution messages
 const showCommandRegistryCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.showCommandRegistry}`,
   (subject, message) => {
@@ -125,7 +226,6 @@ const showCommandRegistryCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(showCommandRegistryCommandSub);
 
-// Subscribe to module-uptime command execution messages
 const moduleUptimeCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleUptime}`,
   (subject, message) => {
@@ -135,7 +235,6 @@ const moduleUptimeCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(moduleUptimeCommandSub);
 
-// Subscribe to module-restart command execution messages
 const moduleRestartCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleRestart}`,
   (subject, message) => {
@@ -145,7 +244,6 @@ const moduleRestartCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(moduleRestartCommandSub);
 
-// Subscribe to list-bot-modules command execution messages
 const listBotModulesCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.listBotModules}`,
   (subject, message) => {
@@ -155,7 +253,6 @@ const listBotModulesCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(listBotModulesCommandSub);
 
-// Subscribe to bot-stats command execution messages
 const botStatsCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.botStats}`,
   (subject, message) => {
@@ -165,7 +262,7 @@ const botStatsCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(botStatsCommandSub);
 
-// Subscribe to router responses with rate limit statistics
+// Subscribe to router responses
 const routerResponseSub = nats.subscribe(
   'admin.response.router.ratelimit-stats',
   (subject, message) => {
@@ -175,7 +272,6 @@ const routerResponseSub = nats.subscribe(
 );
 natsSubscriptions.push(routerResponseSub);
 
-// Subscribe to router responses with command registry information
 const routerCommandRegistryResponseSub = nats.subscribe(
   'admin.response.router.command-registry',
   (subject, message) => {
@@ -185,191 +281,9 @@ const routerCommandRegistryResponseSub = nats.subscribe(
 );
 natsSubscriptions.push(routerCommandRegistryResponseSub);
 
-// Subscribe to control messages for re-registering commands
-const controlSubRegisterCommandAdminJoin = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.join}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.join} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminJoin);
-
-const controlSubRegisterCommandAdminPart = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.part}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.part} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminPart);
-
-const controlSubRegisterCommandAdminShowRatelimits = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.showRatelimits}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.showRatelimits} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminShowRatelimits);
-
-const controlSubRegisterCommandAdminShowCommandRegistry = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.showCommandRegistry}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.showCommandRegistry} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminShowCommandRegistry);
-
-const controlSubRegisterCommandAdminModuleUptime = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.moduleUptime}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.moduleUptime} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminModuleUptime);
-
-const controlSubRegisterCommandAdminModuleRestart = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.moduleRestart}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.moduleRestart} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminModuleRestart);
-
-const controlSubRegisterCommandAdminListBotModules = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.listBotModules}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.listBotModules} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminListBotModules);
-
-const controlSubRegisterCommandAdminBotStats = nats.subscribe(
-  `control.registerCommands.${adminCommandDisplayNames.botStats}`,
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info(
-      `Received control.registerCommands.${adminCommandDisplayNames.botStats} control message`,
-      {
-        producer: 'admin',
-      }
-    );
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAdminBotStats);
-
-const controlSubRegisterCommandAll = nats.subscribe(
-  'control.registerCommands',
-  (subject) => {
-    metrics.recordNatsSubscribe(subject);
-    log.info('Received control.registerCommands control message', {
-      producer: 'admin',
-    });
-    void registerAdminCommands(nats, adminConfig, metrics);
-  }
-);
-natsSubscriptions.push(controlSubRegisterCommandAll);
-
-// Subscribe to stats.emit.request messages and respond with full module stats
-const statsEmitRequestSub = nats.subscribe(
-  'stats.emit.request',
-  (subject, message) => {
-    metrics.recordNatsSubscribe(subject);
-    try {
-      const data = JSON.parse(message.string());
-      log.info('Received stats.emit.request', {
-        producer: 'admin',
-        replyChannel: data.replyChannel,
-      });
-
-      const uptime = Date.now() - moduleStartTime;
-
-      void promRegister
-        .metrics()
-        .then((prometheusMetrics) => {
-          const memoryUsage = process.memoryUsage();
-
-          const statsResponse = {
-            module: 'admin',
-            stats: {
-              uptime_seconds: Math.floor(uptime / 1000),
-              uptime_formatted: `${Math.floor(uptime / 86400000)}d ${Math.floor((uptime % 86400000) / 3600000)}h ${Math.floor((uptime % 3600000) / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
-              memory_rss_mb: Math.round(memoryUsage.rss / (1024 * 1024)),
-              memory_heap_used_mb: Math.round(
-                memoryUsage.heapUsed / (1024 * 1024)
-              ),
-              prometheus_metrics: prometheusMetrics,
-            },
-          };
-
-          if (data.replyChannel) {
-            void nats.publish(data.replyChannel, JSON.stringify(statsResponse));
-            metrics.recordNatsPublish('stats_response');
-          }
-        })
-        .catch((error) => {
-          log.error('Failed to collect prometheus metrics', {
-            producer: 'admin',
-            error: error,
-          });
-        });
-    } catch (error) {
-      log.error('Failed to process stats.emit.request', {
-        producer: 'admin',
-        error: error,
-      });
-    }
-  }
-);
-natsSubscriptions.push(statsEmitRequestSub);
+// Register stats handlers
+const statsSubs = registerStatsHandlers({ nats, moduleName: 'admin', startTime: moduleStartTime, metrics });
+natsSubscriptions.push(...statsSubs);
 
 // Register help information
 const helpSubs = await registerHelp(nats, 'admin', adminHelp as HelpEntry[], metrics);
