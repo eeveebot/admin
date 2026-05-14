@@ -56,7 +56,7 @@ setupHttpServer({
   serviceName: 'admin',
   natsClients: natsClients,
 });
-const natsSubscriptions: Array<Promise<string | boolean>> = [];
+const natsSubscriptions: Array<Promise<import('nats').Subscription | false>> = [];
 
 // Register graceful shutdown handlers
 registerGracefulShutdown(natsClients);

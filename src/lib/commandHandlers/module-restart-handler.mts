@@ -2,6 +2,7 @@
 
 import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
+import type { CommandMessageData } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
 
 /**
@@ -19,7 +20,7 @@ export async function handleModuleRestartCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
-  let data: Record<string, any> = {};
+  let data: CommandMessageData = { platform: 'unknown', instance: 'unknown', channel: 'unknown', user: 'unknown', userHost: 'unknown', network: 'unknown', originalText: '', trace: '' };
   try {
     data = JSON.parse(message.string());
     log.info('Received command.execute for module-restart', {
@@ -52,11 +53,11 @@ export async function handleModuleRestartCommand(
     }
 
     // Extract module name from command text (format: "$MODULE")
-    const moduleName = data.text.trim();
+    const moduleName = (data.text ?? "").trim();
     if (!moduleName) {
       log.warn('Invalid module-restart command format', {
         producer: 'admin',
-        text: data.text,
+        text: data.text ?? "",
       });
       metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'invalid_format');
       return;

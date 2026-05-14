@@ -2,6 +2,7 @@
 
 import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
+import type { CommandMessageData } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
 
 /**
@@ -19,7 +20,7 @@ export async function handleShowRatelimitsCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
-  let data: Record<string, any> = {};
+  let data: CommandMessageData = { platform: 'unknown', instance: 'unknown', channel: 'unknown', user: 'unknown', userHost: 'unknown', network: 'unknown', originalText: '', trace: '' };
   try {
     data = JSON.parse(message.string());
     log.info('Received command.execute for show-ratelimits', {

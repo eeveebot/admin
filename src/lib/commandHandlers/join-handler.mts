@@ -2,6 +2,7 @@
 
 import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
+import type { CommandMessageData } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
 
 /**
@@ -19,7 +20,7 @@ export async function handleJoinCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
-  let data: Record<string, any> = {};
+  let data: CommandMessageData = { platform: 'unknown', instance: 'unknown', channel: 'unknown', user: 'unknown', userHost: 'unknown', network: 'unknown', originalText: '', trace: '' };
   try {
     data = JSON.parse(message.string());
     log.info('Received command.execute for join', {
@@ -52,11 +53,11 @@ export async function handleJoinCommand(
     }
 
     // Extract channel and optional key from command text (format: "#channel [key]")
-    const parts = data.text.trim().split(/\s+/);
+    const parts = (data.text ?? "").trim().split(/\s+/);
     if (parts.length === 0 || !parts[0]) {
       log.warn('Invalid join command format', {
         producer: 'admin',
-        text: data.text,
+        text: data.text ?? "",
       });
       metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'invalid_format');
       return;

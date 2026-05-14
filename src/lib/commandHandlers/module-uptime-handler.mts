@@ -4,6 +4,7 @@ import { NatsClient, log, ModuleMetrics } from '@eeveebot/libeevee';
 import * as crypto from 'crypto';
 import AsciiTable from 'ascii-table';
 import { AdminRootConfig } from '../../types/admin.types.mjs';
+import type { CommandMessageData } from '../../types/admin.types.mjs';
 import { isAuthenticatedAdmin } from '../auth.mjs';
 
 // Interfaces for type safety
@@ -28,7 +29,7 @@ export async function handleModuleUptimeCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
-  let data: Record<string, any> = {};
+  let data: CommandMessageData = { platform: 'unknown', instance: 'unknown', channel: 'unknown', user: 'unknown', userHost: 'unknown', network: 'unknown', originalText: '', trace: '' };
   try {
     data = JSON.parse(message.string());
     log.info('Received command.execute for module-uptime', {

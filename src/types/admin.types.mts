@@ -20,6 +20,19 @@ export interface AdminConfig {
   authentication: AuthenticationMethods;
 }
 
+// Incoming command message data
+export interface CommandMessageData {
+  platform: string;
+  instance: string;
+  channel: string;
+  user: string;
+  userHost: string;
+  network: string;
+  originalText: string;
+  trace: string;
+  text?: string;
+}
+
 // Root configuration interface
 export interface AdminRootConfig {
   admins: AdminConfig[];
