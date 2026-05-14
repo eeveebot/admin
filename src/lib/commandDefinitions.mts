@@ -2,14 +2,14 @@
 
 // Command UUIDs
 export const adminCommandUUIDs = {
-  join: '20a6f27e-bd12-4c5c-931e-cb4a232b2ce5',
-  part: '8d5c0a13-1336-4882-aa41-00a068b2aa00',
-  showRatelimits: '2bbfdf48-4cab-4200-b8a6-521036ffa87e',
-  showCommandRegistry: '13576a4e-f6a5-4659-99d0-4cab09a9158c',
-  moduleUptime: 'f8e8a7b2-4c1d-4e5f-9a2b-3c4d5e6f7890',
-  moduleRestart: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-  listBotModules: 'b2c3d4e5-f6g7-8901-bcde-fg2345678901',
-  botStats: 'c3d4e5f6-g7h8-9012-cdef-gh3456789012',
+  join: '74f22011-6066-47fa-b7c7-313511f22a8a',
+  part: 'e38f691e-b671-4217-bc70-fd02d2e763c5',
+  showRatelimits: '2e9ec6b9-9309-4083-a30d-857c8f5a5802',
+  showCommandRegistry: '881eb895-5507-44f4-afd6-936dce88e25e',
+  moduleUptime: 'fd5fbe3b-d01d-4246-9737-a3893a44bb8e',
+  moduleRestart: 'fcfe0e9c-9104-493f-b533-113a2838efdb',
+  listBotModules: '5ddb9356-e581-469e-88a7-a42e916d09b8',
+  botStats: '48f329be-e150-488a-a9d9-1ca1b4300c2d',
 };
 
 // Command display names

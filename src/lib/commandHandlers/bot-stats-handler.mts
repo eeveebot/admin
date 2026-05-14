@@ -29,9 +29,9 @@ export async function handleBotStatsCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
-  void (async () => {
-    try {
-      const data = JSON.parse(message.string());
+  let data: Record<string, any> = {};
+  try {
+      data = JSON.parse(message.string());
       log.info('Received command.execute for bot-stats', {
         producer: 'admin',
         platform: data.platform,
@@ -646,26 +646,15 @@ export async function handleBotStatsCommand(
     } catch (error) {
       log.error('Failed to process bot-stats command', {
         producer: 'admin',
-        message: message.string(),
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
       // Record error
       metrics.recordError('bot_stats_command');
-      if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-        metrics.recordCommand(
-        error.platform,
-        error.network || 'unknown',
-        error.channel,
-        'error'
-      )
-      } else {
-        metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
-      }
+      metrics.recordCommand(data.platform || 'unknown', data.network || 'unknown', data.channel || 'unknown', 'error');
 
       // Try to send error message back to user
       try {
-        const data = JSON.parse(message.string());
         const errorMessage = {
           platform: data.platform,
           instance: data.instance,
@@ -690,5 +679,4 @@ export async function handleBotStatsCommand(
       const duration = Date.now() - startTime;
       metrics.recordProcessingTime(duration / 1000); // Convert to seconds
     }
-  })();
 }

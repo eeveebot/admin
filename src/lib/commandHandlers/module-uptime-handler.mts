@@ -28,8 +28,9 @@ export async function handleModuleUptimeCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
+  let data: Record<string, any> = {};
   try {
-    const data = JSON.parse(message.string());
+    data = JSON.parse(message.string());
     log.info('Received command.execute for module-uptime', {
       producer: 'admin',
       platform: data.platform,
@@ -223,6 +224,10 @@ export async function handleModuleUptimeCommand(
       
       // Record successful command execution
       metrics.recordCommand(data.platform, data.network || 'unknown', data.channel, 'success');
+
+      // Record processing time (this is where the command actually completes)
+      const duration = Date.now() - startTime;
+      metrics.recordProcessingTime(duration / 1000);
     };
 
     // Subscribe to the reply channel to collect responses
@@ -266,24 +271,14 @@ export async function handleModuleUptimeCommand(
   } catch (error) {
     log.error('Failed to process module-uptime command', {
       producer: 'admin',
-      message: message.string(),
       error: error,
     });
     // Record error
     metrics.recordError('module_uptime_command');
-    if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      metrics.recordCommand(
-        error.platform,
-        error.network || 'unknown',
-        error.channel,
-        'error'
-      )
-    } else {
-      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
-    }
-  } finally {
-    // Record processing time
+    metrics.recordCommand(data.platform || 'unknown', data.network || 'unknown', data.channel || 'unknown', 'error');
+
+    // Record processing time for error path
     const duration = Date.now() - startTime;
-    metrics.recordProcessingTime(duration / 1000); // Convert to seconds
+    metrics.recordProcessingTime(duration / 1000);
   }
 }

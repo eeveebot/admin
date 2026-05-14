@@ -20,9 +20,9 @@ export async function handleListBotModulesCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
-  void (async () => {
-    try {
-      const data = JSON.parse(message.string());
+  let data: Record<string, any> = {};
+  try {
+      data = JSON.parse(message.string());
       log.info('Received command.execute for list-bot-modules', {
         producer: 'admin',
         platform: data.platform,
@@ -233,26 +233,15 @@ export async function handleListBotModulesCommand(
     } catch (error) {
       log.error('Failed to process list-bot-modules command', {
         producer: 'admin',
-        message: message.string(),
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
       // Record error
       metrics.recordError('list_bot_modules_command');
-      if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-        metrics.recordCommand(
-        error.platform,
-        error.network || 'unknown',
-        error.channel,
-        'error'
-      )
-      } else {
-        metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
-      }
+      metrics.recordCommand(data.platform || 'unknown', data.network || 'unknown', data.channel || 'unknown', 'error');
 
       // Try to send error message back to user
       try {
-        const data = JSON.parse(message.string());
         const errorMessage = {
           platform: data.platform,
           instance: data.instance,
@@ -277,5 +266,4 @@ export async function handleListBotModulesCommand(
       const duration = Date.now() - startTime;
       metrics.recordProcessingTime(duration / 1000); // Convert to seconds
     }
-  })();
 }

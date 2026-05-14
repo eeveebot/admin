@@ -19,8 +19,9 @@ export async function handleShowCommandRegistryCommand(
   message: { string(): string }
 ): Promise<void> {
   const startTime = Date.now();
+  let data: Record<string, any> = {};
   try {
-    const data = JSON.parse(message.string());
+    data = JSON.parse(message.string());
     log.info('Received command.execute for show-command-registry', {
       producer: 'admin',
       platform: data.platform,
@@ -76,21 +77,11 @@ export async function handleShowCommandRegistryCommand(
   } catch (error) {
     log.error('Failed to process show-command-registry command', {
       producer: 'admin',
-      message: message.string(),
       error: error,
     });
     // Record error
     metrics.recordError('show_command_registry_command');
-    if (typeof error === 'object' && error !== null && 'platform' in error && 'channel' in error) {
-      metrics.recordCommand(
-        error.platform,
-        error.network || 'unknown',
-        error.channel,
-        'error'
-      )
-    } else {
-      metrics.recordCommand('unknown', 'unknown', 'unknown', 'error');
-    }
+    metrics.recordCommand(data.platform || 'unknown', data.network || 'unknown', data.channel || 'unknown', 'error');
   } finally {
     // Record processing time
     const duration = Date.now() - startTime;
