@@ -91,6 +91,7 @@ See [`config/admin-config.example.yaml`](config/admin-config.example.yaml) for a
 | `MODULE_CONFIG_PATH` | Yes | — | Path to the admin configuration YAML file |
 | `NATS_HOST` | Yes | — | NATS server host |
 | `NATS_TOKEN` | Yes | — | NATS authentication token |
+| `NAMESPACE` | No | `eevee-bot` | Kubernetes namespace (used by `module-restart` to target the correct pod) |
 | `HTTP_API_PORT` | No | `9000` | Port for the metrics and health-check HTTP server |
 
 ## Commands
@@ -184,7 +185,7 @@ Shows aggregated statistics from various bot modules.
 Administrators are authenticated based on their platform-specific identifiers:
 
 - **IRC**: Hostmask matching (supports both exact matches and regex patterns)
-- Currently, only IRC authentication is supported; other platforms are rejected
+- Currently, only IRC authentication is supported; other platforms are rejected. This is an intentional safety default — `isAuthenticatedAdmin` will return `false` for non-IRC platforms until Discord authentication is implemented.
 
 Only properly authenticated administrators can execute control commands. All command attempts are logged for security auditing.
 
