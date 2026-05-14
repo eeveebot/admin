@@ -15,6 +15,7 @@ import {
   registerHelp,
   registerStatsHandlers,
   HelpEntry,
+  NatsSubscriptionResult,
 } from '@eeveebot/libeevee';
 import { loadAdminConfig } from './lib/admin-config.mjs';
 import { AdminRootConfig } from './types/admin.types.mjs';
@@ -56,7 +57,7 @@ setupHttpServer({
   serviceName: 'admin',
   natsClients: natsClients,
 });
-const natsSubscriptions: Array<Promise<import('nats').Subscription | false>> = [];
+const natsSubscriptions: Array<Promise<NatsSubscriptionResult>> = [];
 
 // Register graceful shutdown handlers
 registerGracefulShutdown(natsClients);
