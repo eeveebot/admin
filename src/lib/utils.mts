@@ -1,4 +1,5 @@
 'use strict';
 
 // Re-export utility functions from separate modules
-export { parsePrometheusMetrics } from './utils/metricsParser.mjs';
+export { parsePrometheusMetrics, parsePerModuleMetrics } from './utils/metricsParser.mjs';
+export type { ConnectorInfo } from './utils/metricsParser.mjs';

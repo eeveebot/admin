@@ -41,9 +41,9 @@ export interface AdminRootConfig {
     part?: RateLimitConfig;
     showRatelimits?: RateLimitConfig;
     showCommandRegistry?: RateLimitConfig;
-    moduleUptime?: RateLimitConfig;
     moduleRestart?: RateLimitConfig;
     listBotModules?: RateLimitConfig;
     botStats?: RateLimitConfig;
+    health?: RateLimitConfig;
   };
 }

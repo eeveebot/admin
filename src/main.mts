@@ -1,5 +1,7 @@
 'use strict';
 
+import fs from 'node:fs';
+
 // Admin module
 // manages bot administrators and permissions
 
@@ -30,10 +32,10 @@ import {
   handlePartCommand,
   handleShowRatelimitsCommand,
   handleShowCommandRegistryCommand,
-  handleModuleUptimeCommand,
   handleModuleRestartCommand,
   handleListBotModulesCommand,
   handleBotStatsCommand,
+  handleHealthCommand,
 } from './lib/command-handlers.mjs';
 import {
   handleRouterRatelimitStatsResponse,
@@ -42,6 +44,7 @@ import {
 
 // Record module startup time for uptime tracking
 const moduleStartTime = Date.now();
+const moduleVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
 
 // Initialize module-scoped metrics recorder
 const metrics = createModuleMetrics('admin');
@@ -138,19 +141,6 @@ const showCommandRegistrySubs = await registerCommand(
 );
 natsSubscriptions.push(...showCommandRegistrySubs);
 
-const moduleUptimeSubs = await registerCommand(
-  nats,
-  {
-    commandUUID: adminCommandUUIDs.moduleUptime,
-    commandDisplayName: adminCommandDisplayNames.moduleUptime,
-    regex: '^admin module-uptime',
-    platformPrefixAllowed: true,
-    ratelimit: rateLimits.moduleUptimeRateLimit,
-  },
-  metrics
-);
-natsSubscriptions.push(...moduleUptimeSubs);
-
 const moduleRestartSubs = await registerCommand(
   nats,
   {
@@ -190,6 +180,19 @@ const botStatsSubs = await registerCommand(
 );
 natsSubscriptions.push(...botStatsSubs);
 
+const healthSubs = await registerCommand(
+  nats,
+  {
+    commandUUID: adminCommandUUIDs.health,
+    commandDisplayName: adminCommandDisplayNames.health,
+    regex: '^admin health',
+    platformPrefixAllowed: true,
+    ratelimit: rateLimits.healthRateLimit,
+  },
+  metrics
+);
+natsSubscriptions.push(...healthSubs);
+
 // Subscribe to command execution messages
 const joinCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.join}`,
@@ -227,15 +230,6 @@ const showCommandRegistryCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(showCommandRegistryCommandSub);
 
-const moduleUptimeCommandSub = nats.subscribe(
-  `command.execute.${adminCommandUUIDs.moduleUptime}`,
-  (subject, message) => {
-    metrics.recordNatsSubscribe(subject);
-    void handleModuleUptimeCommand(nats, adminConfig, metrics, subject, message);
-  }
-);
-natsSubscriptions.push(moduleUptimeCommandSub);
-
 const moduleRestartCommandSub = nats.subscribe(
   `command.execute.${adminCommandUUIDs.moduleRestart}`,
   (subject, message) => {
@@ -263,6 +257,15 @@ const botStatsCommandSub = nats.subscribe(
 );
 natsSubscriptions.push(botStatsCommandSub);
 
+const healthCommandSub = nats.subscribe(
+  `command.execute.${adminCommandUUIDs.health}`,
+  (subject, message) => {
+    metrics.recordNatsSubscribe(subject);
+    void handleHealthCommand(nats, adminConfig, metrics, subject, message);
+  }
+);
+natsSubscriptions.push(healthCommandSub);
+
 // Subscribe to router responses
 const routerResponseSub = nats.subscribe(
   'admin.response.router.ratelimit-stats',
@@ -283,7 +286,7 @@ const routerCommandRegistryResponseSub = nats.subscribe(
 natsSubscriptions.push(routerCommandRegistryResponseSub);
 
 // Register stats handlers
-const statsSubs = registerStatsHandlers({ nats, moduleName: 'admin', startTime: moduleStartTime, metrics });
+const statsSubs = registerStatsHandlers({ nats, moduleName: 'admin', startTime: moduleStartTime, version: moduleVersion, metrics });
 natsSubscriptions.push(...statsSubs);
 
 // Register help information

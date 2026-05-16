@@ -6,10 +6,10 @@ export const adminCommandUUIDs = {
   part: 'e38f691e-b671-4217-bc70-fd02d2e763c5',
   showRatelimits: '2e9ec6b9-9309-4083-a30d-857c8f5a5802',
   showCommandRegistry: '881eb895-5507-44f4-afd6-936dce88e25e',
-  moduleUptime: 'fd5fbe3b-d01d-4246-9737-a3893a44bb8e',
   moduleRestart: 'fcfe0e9c-9104-493f-b533-113a2838efdb',
   listBotModules: '5ddb9356-e581-469e-88a7-a42e916d09b8',
   botStats: '48f329be-e150-488a-a9d9-1ca1b4300c2d',
+  health: 'a7c4e8f2-3b1d-4e5a-9f8c-2d6b0a1e3f7c',
 };
 
 // Command display names
@@ -18,10 +18,10 @@ export const adminCommandDisplayNames = {
   part: 'admin-part',
   showRatelimits: 'admin-show-ratelimits',
   showCommandRegistry: 'admin-show-command-registry',
-  moduleUptime: 'admin-module-uptime',
   moduleRestart: 'admin-module-restart',
   listBotModules: 'admin-list-bot-modules',
   botStats: 'admin-bot-stats',
+  health: 'admin-health',
 };
 
 // Help information for admin commands
@@ -89,11 +89,6 @@ export const adminHelp = [
     params: [],
   },
   {
-    command: 'admin module-uptime',
-    descr: 'Show uptime information for all modules',
-    params: [],
-  },
-  {
     command: 'admin module-restart',
     descr: 'Restart a specific module',
     params: [
@@ -112,6 +107,11 @@ export const adminHelp = [
   {
     command: 'admin bot-stats',
     descr: 'Show bot statistics from various modules',
+    params: [],
+  },
+  {
+    command: 'admin health',
+    descr: 'Show health status of all bot modules',
     params: [],
   },
 ];

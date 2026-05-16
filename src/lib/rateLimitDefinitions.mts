@@ -35,12 +35,6 @@ export function getAdminRateLimits(adminConfig: AdminRootConfig) {
       limit: 3,
       interval: '1m',
     },
-    moduleUptime: {
-      mode: 'drop',
-      level: 'user',
-      limit: 5,
-      interval: '1m',
-    },
     moduleRestart: {
       mode: 'drop',
       level: 'user',
@@ -59,6 +53,12 @@ export function getAdminRateLimits(adminConfig: AdminRootConfig) {
       limit: 5,
       interval: '1m',
     },
+    health: {
+      mode: 'drop',
+      level: 'user',
+      limit: 5,
+      interval: '1m',
+    },
   };
 
   // Use configured rate limits or defaults
@@ -69,23 +69,23 @@ export function getAdminRateLimits(adminConfig: AdminRootConfig) {
   const showCommandRegistryRateLimit =
     adminConfig.ratelimits?.showCommandRegistry ||
     defaultRateLimits.showCommandRegistry;
-  const moduleUptimeRateLimit =
-    adminConfig.ratelimits?.moduleUptime || defaultRateLimits.moduleUptime;
   const moduleRestartRateLimit =
     adminConfig.ratelimits?.moduleRestart || defaultRateLimits.moduleRestart;
   const listBotModulesRateLimit =
     adminConfig.ratelimits?.listBotModules || defaultRateLimits.listBotModules;
   const botStatsRateLimit =
     adminConfig.ratelimits?.botStats || defaultRateLimits.botStats;
+  const healthRateLimit =
+    adminConfig.ratelimits?.health || defaultRateLimits.health;
 
   return {
     joinRateLimit: joinRateLimit as RateLimitConfig,
     partRateLimit: partRateLimit as RateLimitConfig,
     showRatelimitsRateLimit: showRatelimitsRateLimit as RateLimitConfig,
     showCommandRegistryRateLimit: showCommandRegistryRateLimit as RateLimitConfig,
-    moduleUptimeRateLimit: moduleUptimeRateLimit as RateLimitConfig,
     moduleRestartRateLimit: moduleRestartRateLimit as RateLimitConfig,
     listBotModulesRateLimit: listBotModulesRateLimit as RateLimitConfig,
     botStatsRateLimit: botStatsRateLimit as RateLimitConfig,
+    healthRateLimit: healthRateLimit as RateLimitConfig,
   };
 }
