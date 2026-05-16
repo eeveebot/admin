@@ -16,7 +16,7 @@ The admin module is a core infrastructure component: it registers its commands w
 - Dynamic channel joining and parting across platforms
 - Rate-limit statistics inspection (`admin show-ratelimits`)
 - Command registry inspection (`admin show-command-registry`)
-- Module uptime reporting (`admin module-uptime`)
+- Health status check (`admin health`) — shows ok/degraded/down/disabled/unknown per module with connector details and version drift detection
 - Module restart capability (`admin module-restart`)
 - Bot module listing with deployment info (`admin list-bot-modules`)
 - Bot statistics aggregation (`admin bot-stats`)
@@ -63,6 +63,11 @@ ratelimits:
     level: user
     limit: 3
     interval: 1m
+  health:
+    mode: drop
+    level: user
+    limit: 5
+    interval: 1m
 ```
 
 ### Configuration Fields
@@ -80,7 +85,7 @@ ratelimits:
 | `ratelimits.<command>.limit` | No | Maximum number of requests allowed |
 | `ratelimits.<command>.interval` | No | Time period for the limit (e.g., `30s`, `1m`, `5m`) |
 
-Rate limits can be configured for: `join`, `part`, `showRatelimits`, `showCommandRegistry`, `moduleUptime`, `moduleRestart`, `listBotModules`, `botStats`. All default to `{ mode: "drop", level: "user", limit: 3, interval: "1m" }` (5 requests/min for `moduleUptime`, `listBotModules`, and `botStats`).
+Rate limits can be configured for: `join`, `part`, `showRatelimits`, `showCommandRegistry`, `health`, `moduleRestart`, `listBotModules`, `botStats`. All default to `{ mode: "drop", level: "user", limit: 3, interval: "1m" }` (5 requests/min for `health`, `listBotModules`, and `botStats`).
 
 See [`config/admin-config.example.yaml`](config/admin-config.example.yaml) for a complete example.
 
@@ -144,13 +149,21 @@ admin show-command-registry
 
 Displays the current command registry from the router.
 
-### `admin module-uptime`
+### `admin health`
 
 ```none
-admin module-uptime
+admin health
 ```
 
-Shows uptime information for all active bot modules.
+Shows health status for all bot modules. Each module is classified as **ok**, **degraded**, **down**, **disabled**, or **unknown** based on pod status, NATS responsiveness, error counts, and restart counts.
+
+The report includes:
+- A summary table with uptime, memory, errors, restarts, and version for each module
+- Warnings for degraded/down modules (crash loops, pending pods, unresponsive NATS, error counts, restarts, version drift between image tag and running version)
+- Connector details for IRC/Discord connectors (connection status, channel counts, reconnect history, last connect/disconnect times)
+- Version drift detection — flags modules where the deployed image tag doesn't match the running module's reported version
+
+Requires `EEVEE_OPERATOR_API_TOKEN` and `EEVEE_OPERATOR_API_URL` environment variables (set automatically when `mountOperatorApiToken: true` is configured in the botmodule spec).
 
 ### `admin module-restart`
 
